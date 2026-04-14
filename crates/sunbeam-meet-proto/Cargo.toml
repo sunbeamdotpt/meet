@@ -1,0 +1,21 @@
+[package]
+name = "sunbeam-meet-proto"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Generated gRPC + Connect types for sunbeam.meet.v1 and sunbeam.agent.v1."
+
+[lints]
+workspace = true
+
+[dependencies]
+tonic.workspace = true
+prost.workspace = true
+prost-types.workspace = true
+
+[build-dependencies]
+tonic-build.workspace = true
