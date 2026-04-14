@@ -1,0 +1,766 @@
+syntax = "proto3";
+package sunbeam.meet.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Sunbeam Meet — video conferencing service backed by LiveKit.
+// Frontend speaks Connect (HTTP/JSON), internal services speak gRPC.
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+service MeetService {
+  // ── Rooms ──────────────────────────────────────────────────────
+
+  rpc CreateRoom(CreateRoomRequest) returns (Room);
+  rpc GetRoom(GetRoomRequest) returns (Room);
+  rpc ListRooms(ListRoomsRequest) returns (ListRoomsResponse);
+  rpc UpdateRoom(UpdateRoomRequest) returns (Room);
+  rpc EndRoom(EndRoomRequest) returns (EndRoomResponse);
+
+  // ── Realtime session ───────────────────────────────────────────
+  // Primary bidirectional stream for a connected participant.
+  // Client sends control messages; server pushes room events,
+  // participant changes, captions, chat, and recording status.
+
+  rpc JoinRoom(stream MeetClientMessage) returns (stream MeetServerMessage);
+
+  // ── Auth ───────────────────────────────────────────────────────
+
+  rpc GenerateToken(GenerateTokenRequest) returns (GenerateTokenResponse);
+
+  // ── Participants ───────────────────────────────────────────────
+
+  rpc InviteParticipant(InviteRequest) returns (InviteResponse);
+  rpc KickParticipant(KickRequest) returns (KickResponse);
+  rpc UpdateParticipantRole(UpdateRoleRequest) returns (Participant);
+  rpc MuteParticipant(MuteParticipantRequest) returns (MuteParticipantResponse);
+
+  // ── Recording ──────────────────────────────────────────────────
+
+  rpc StartRecording(StartRecordingRequest) returns (Recording);
+  rpc StopRecording(StopRecordingRequest) returns (Recording);
+  rpc ListRecordings(ListRecordingsRequest) returns (ListRecordingsResponse);
+  rpc GetRecording(GetRecordingRequest) returns (Recording);
+  rpc DeleteRecording(DeleteRecordingRequest) returns (DeleteRecordingResponse);
+
+  // ── Captioning ─────────────────────────────────────────────────
+
+  rpc StartCaptioning(StartCaptioningRequest) returns (CaptioningStatus);
+  rpc StopCaptioning(StopCaptioningRequest) returns (CaptioningStatus);
+
+  // ── Chat ───────────────────────────────────────────────────────
+  // Persistent chat backed by lk.chat text stream + Postgres.
+
+  rpc SendChatMessage(SendChatRequest) returns (ChatMessage);
+  rpc GetChatHistory(GetChatHistoryRequest) returns (GetChatHistoryResponse);
+  rpc DeleteChatMessage(DeleteChatMessageRequest) returns (DeleteChatMessageResponse);
+
+  // ── Reactions ──────────────────────────────────────────────────
+
+  rpc SendReaction(SendReactionRequest) returns (SendReactionResponse);
+
+  // ── Breakout rooms ─────────────────────────────────────────────
+
+  rpc CreateBreakoutRooms(CreateBreakoutRequest) returns (BreakoutRoomsResponse);
+  rpc MergeBreakoutRooms(MergeBreakoutRequest) returns (MergeBreakoutResponse);
+  rpc MoveParticipantToBreakout(MoveToBreakoutRequest) returns (MoveToBreakoutResponse);
+
+  // ── Scheduling (Stalwart CalDAV) ───────────────────────────────
+
+  rpc ScheduleMeeting(ScheduleMeetingRequest) returns (ScheduledMeeting);
+  rpc GetScheduledMeeting(GetScheduledMeetingRequest) returns (ScheduledMeeting);
+  rpc ListScheduledMeetings(ListScheduledMeetingsRequest) returns (ListScheduledMeetingsResponse);
+  rpc UpdateScheduledMeeting(UpdateScheduledMeetingRequest) returns (ScheduledMeeting);
+  rpc CancelScheduledMeeting(CancelScheduledMeetingRequest) returns (CancelScheduledMeetingResponse);
+
+  // ── Meeting summary (post-meeting AI output) ───────────────────
+
+  rpc GetMeetingSummary(GetMeetingSummaryRequest) returns (MeetingSummary);
+  rpc ListMeetingSummaries(ListMeetingSummariesRequest) returns (ListMeetingSummariesResponse);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Enums
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+enum RoomAccessLevel {
+  ROOM_ACCESS_LEVEL_UNSPECIFIED = 0;
+  ROOM_ACCESS_LEVEL_PUBLIC = 1;       // anyone with link can join
+  ROOM_ACCESS_LEVEL_TRUSTED = 2;      // authenticated users can join
+  ROOM_ACCESS_LEVEL_RESTRICTED = 3;   // explicit invite required
+}
+
+enum ParticipantRole {
+  PARTICIPANT_ROLE_UNSPECIFIED = 0;
+  PARTICIPANT_ROLE_VIEWER = 1;        // can subscribe, no publish
+  PARTICIPANT_ROLE_MEMBER = 2;        // can publish + subscribe
+  PARTICIPANT_ROLE_ADMIN = 3;         // can mute/kick, manage recording
+  PARTICIPANT_ROLE_OWNER = 4;         // full control, room creator
+}
+
+enum RoomStatus {
+  ROOM_STATUS_UNSPECIFIED = 0;
+  ROOM_STATUS_WAITING = 1;            // created, no participants yet
+  ROOM_STATUS_ACTIVE = 2;             // at least one participant
+  ROOM_STATUS_ENDED = 3;              // manually ended or empty_timeout
+}
+
+enum RecordingStatus {
+  RECORDING_STATUS_UNSPECIFIED = 0;
+  RECORDING_STATUS_STARTING = 1;
+  RECORDING_STATUS_ACTIVE = 2;
+  RECORDING_STATUS_STOPPING = 3;
+  RECORDING_STATUS_STOPPED = 4;
+  RECORDING_STATUS_SAVED = 5;         // file written to SeaweedFS
+  RECORDING_STATUS_FAILED = 6;
+}
+
+enum RecordingMode {
+  RECORDING_MODE_UNSPECIFIED = 0;
+  RECORDING_MODE_COMPOSITE = 1;       // room composite (gallery view)
+  RECORDING_MODE_SPEAKER = 2;         // active speaker layout
+  RECORDING_MODE_AUDIO_ONLY = 3;      // mixed audio, no video
+}
+
+enum RecordingOutput {
+  RECORDING_OUTPUT_UNSPECIFIED = 0;
+  RECORDING_OUTPUT_FILE = 1;          // MP4/WebM to SeaweedFS
+  RECORDING_OUTPUT_HLS = 2;           // HLS segments for live viewing
+  RECORDING_OUTPUT_RTMP = 3;          // push to external RTMP endpoint
+}
+
+enum CaptioningState {
+  CAPTIONING_STATE_UNSPECIFIED = 0;
+  CAPTIONING_STATE_STARTING = 1;
+  CAPTIONING_STATE_ACTIVE = 2;
+  CAPTIONING_STATE_STOPPING = 3;
+  CAPTIONING_STATE_STOPPED = 4;
+  CAPTIONING_STATE_FAILED = 5;
+}
+
+enum VideoQualityPreset {
+  VIDEO_QUALITY_PRESET_UNSPECIFIED = 0;
+  VIDEO_QUALITY_PRESET_AUTO = 1;      // adaptive, server picks layers
+  VIDEO_QUALITY_PRESET_LOW = 2;       // 360p30 @ 400 Kbps
+  VIDEO_QUALITY_PRESET_MEDIUM = 3;    // 720p30 @ 2.5 Mbps
+  VIDEO_QUALITY_PRESET_HIGH = 4;      // 1080p60 @ 8 Mbps (VP9 L3T3_KEY)
+  VIDEO_QUALITY_PRESET_ULTRA = 5;     // 4K60 @ 20 Mbps (AV1 L3T3_KEY)
+}
+
+enum InviteMethod {
+  INVITE_METHOD_UNSPECIFIED = 0;
+  INVITE_METHOD_EMAIL = 1;            // via Stalwart
+  INVITE_METHOD_LINK = 2;             // shareable room URL
+  INVITE_METHOD_MATRIX = 3;           // Matrix room invite
+}
+
+enum MeetingRecurrence {
+  MEETING_RECURRENCE_UNSPECIFIED = 0;
+  MEETING_RECURRENCE_NONE = 1;
+  MEETING_RECURRENCE_DAILY = 2;
+  MEETING_RECURRENCE_WEEKLY = 3;
+  MEETING_RECURRENCE_BIWEEKLY = 4;
+  MEETING_RECURRENCE_MONTHLY = 5;
+  MEETING_RECURRENCE_CUSTOM = 6;      // rrule in recurrence_rule field
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Core types
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+message Room {
+  string id = 1;
+  string name = 2;                    // human-readable slug
+  string display_name = 3;
+  RoomAccessLevel access_level = 4;
+  RoomStatus status = 5;
+  uint32 max_participants = 6;
+  VideoQualityPreset default_quality = 7;
+  bool waiting_room_enabled = 8;
+  bool chat_enabled = 9;
+  bool recording_allowed = 10;
+  bool captioning_available = 11;
+  string created_by = 12;             // user identity
+  map<string, string> metadata = 13;
+  repeated Participant participants = 14;
+  RecordingStatus active_recording_status = 15;
+  CaptioningState captioning_state = 16;
+  google.protobuf.Timestamp created_at = 17;
+  google.protobuf.Timestamp ended_at = 18;
+  string livekit_room_name = 19;      // internal LiveKit room identifier
+}
+
+message Participant {
+  string identity = 1;               // unique user identity (from Kratos)
+  string display_name = 2;
+  ParticipantRole role = 3;
+  bool is_muted_audio = 4;
+  bool is_muted_video = 5;
+  bool is_screen_sharing = 6;
+  bool is_hand_raised = 7;
+  bool is_speaking = 8;
+  ConnectionQuality connection_quality = 9;
+  google.protobuf.Timestamp joined_at = 10;
+  map<string, string> attributes = 11;
+}
+
+message ConnectionQuality {
+  float score = 1;                    // 0.0 (terrible) → 1.0 (perfect)
+  float packet_loss = 2;             // fraction, 0.0 → 1.0
+  uint32 rtt_ms = 3;
+  uint32 jitter_ms = 4;
+}
+
+message Recording {
+  string id = 1;
+  string room_id = 2;
+  RecordingStatus status = 3;
+  RecordingMode mode = 4;
+  RecordingOutput output = 5;
+  string started_by = 6;             // user identity
+  google.protobuf.Duration duration = 7;
+  uint64 size_bytes = 8;
+  string storage_path = 9;           // SeaweedFS key
+  string download_url = 10;          // pre-signed, time-limited
+  string rtmp_url = 11;              // if output is RTMP
+  string egress_id = 12;             // LiveKit egress identifier
+  google.protobuf.Timestamp started_at = 13;
+  google.protobuf.Timestamp ended_at = 14;
+}
+
+message ChatMessage {
+  string id = 1;
+  string room_id = 2;
+  string sender_identity = 3;
+  string sender_display_name = 4;
+  string content = 5;                // plaintext or markdown
+  string reply_to = 6;               // message id, empty if not a reply
+  bool edited = 7;
+  bool deleted = 8;
+  google.protobuf.Timestamp sent_at = 9;
+}
+
+message Caption {
+  string participant_identity = 1;   // who is speaking
+  string participant_name = 2;
+  string text = 3;
+  bool is_final = 4;                 // false = interim/partial result
+  string language = 5;               // BCP-47
+  google.protobuf.Timestamp timestamp = 6;
+}
+
+message Reaction {
+  string participant_identity = 1;
+  string participant_name = 2;
+  string emoji = 3;                  // unicode emoji
+  google.protobuf.Timestamp timestamp = 4;
+}
+
+message MeetingSummary {
+  string id = 1;
+  string room_id = 2;
+  string room_display_name = 3;
+  string summary_markdown = 4;
+  repeated ActionItem action_items = 5;
+  repeated string attendee_identities = 6;
+  google.protobuf.Duration meeting_duration = 7;
+  string full_transcript = 8;        // can be large; omitted in list responses
+  google.protobuf.Timestamp generated_at = 9;
+}
+
+message ActionItem {
+  string description = 1;
+  string assignee_identity = 2;      // empty if unassigned
+  string assignee_name = 3;
+  bool completed = 4;
+}
+
+message ScheduledMeeting {
+  string id = 1;
+  string room_name = 2;
+  string display_name = 3;
+  string description = 4;
+  string organizer_identity = 5;
+  RoomAccessLevel access_level = 6;
+  VideoQualityPreset default_quality = 7;
+  repeated string invitee_emails = 8;
+  MeetingRecurrence recurrence = 9;
+  string recurrence_rule = 10;       // iCalendar RRULE, used when recurrence = CUSTOM
+  string caldav_uid = 11;            // Stalwart calendar event UID
+  google.protobuf.Timestamp starts_at = 12;
+  google.protobuf.Timestamp ends_at = 13;
+  google.protobuf.Timestamp created_at = 14;
+  google.protobuf.Timestamp updated_at = 15;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// JoinRoom stream messages
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// ── Client → Server ──────────────────────────────────────────────
+
+message MeetClientMessage {
+  oneof payload {
+    JoinRequest join = 1;
+    LeaveRequest leave = 2;
+    MuteToggle mute_toggle = 3;
+    LayoutChange layout_change = 4;
+    RaiseHandToggle raise_hand = 5;
+    ClientReaction reaction = 6;
+    QualityChange quality_change = 7;
+    PinParticipant pin_participant = 8;
+    Ping ping = 15;
+  }
+}
+
+message JoinRequest {
+  string room_id = 1;
+  string token = 2;                   // LiveKit access token
+  VideoQualityPreset preferred_quality = 3;
+  string display_name = 4;
+}
+
+message LeaveRequest {}
+
+message MuteToggle {
+  bool audio = 1;                    // true = mute audio
+  bool video = 2;                    // true = mute video
+}
+
+message LayoutChange {
+  LayoutMode mode = 1;
+}
+
+enum LayoutMode {
+  LAYOUT_MODE_UNSPECIFIED = 0;
+  LAYOUT_MODE_GALLERY = 1;          // grid of all participants
+  LAYOUT_MODE_SPEAKER = 2;          // active speaker large, others small
+  LAYOUT_MODE_SIDEBAR = 3;          // shared content + speaker strip
+  LAYOUT_MODE_SPOTLIGHT = 4;        // single pinned participant
+}
+
+message RaiseHandToggle {
+  bool raised = 1;
+}
+
+message ClientReaction {
+  string emoji = 1;
+}
+
+message QualityChange {
+  VideoQualityPreset preset = 1;
+}
+
+message PinParticipant {
+  string participant_identity = 1;   // empty to unpin
+}
+
+// ── Server → Client ──────────────────────────────────────────────
+
+message MeetServerMessage {
+  oneof payload {
+    RoomState room_state = 1;
+    ParticipantJoined participant_joined = 2;
+    ParticipantLeft participant_left = 3;
+    ParticipantUpdated participant_updated = 4;
+    ActiveSpeakerChanged active_speaker = 5;
+    Caption caption = 6;
+    CaptioningStatusChanged captioning_status = 7;
+    RecordingStateChanged recording_state = 8;
+    ChatMessageBroadcast chat_message = 9;
+    ReactionBroadcast reaction = 10;
+    BreakoutAnnouncement breakout = 11;
+    RoomEnded room_ended = 12;
+    Error error = 13;
+    WaitingRoomEntry waiting_room = 14;
+    Pong pong = 15;
+  }
+}
+
+message RoomState {
+  Room room = 1;
+  string your_identity = 2;
+  ParticipantRole your_role = 3;
+}
+
+message ParticipantJoined {
+  Participant participant = 1;
+}
+
+message ParticipantLeft {
+  string identity = 1;
+  string reason = 2;                 // "left", "kicked", "disconnected"
+}
+
+message ParticipantUpdated {
+  Participant participant = 1;
+}
+
+message ActiveSpeakerChanged {
+  repeated string speaker_identities = 1;  // ordered by audio level
+}
+
+message CaptioningStatusChanged {
+  CaptioningState state = 1;
+  string language = 2;
+  string error_message = 3;         // populated when state = FAILED
+}
+
+message RecordingStateChanged {
+  Recording recording = 1;
+}
+
+message ChatMessageBroadcast {
+  ChatMessage message = 1;
+}
+
+message ReactionBroadcast {
+  Reaction reaction = 1;
+}
+
+message BreakoutAnnouncement {
+  string breakout_room_id = 1;
+  string breakout_room_name = 2;
+  string message = 3;               // e.g. "You've been moved to Room A"
+  bool returning_to_main = 4;
+}
+
+message RoomEnded {
+  string reason = 1;                 // "ended_by_host", "empty_timeout", "error"
+  string ended_by = 2;              // identity of host who ended, if applicable
+}
+
+message Error {
+  string message = 1;
+  bool fatal = 2;
+}
+
+message WaitingRoomEntry {
+  string identity = 1;
+  string display_name = 2;
+  google.protobuf.Timestamp requested_at = 3;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Request / Response messages
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// ── Rooms ────────────────────────────────────────────────────────
+
+message CreateRoomRequest {
+  string display_name = 1;
+  RoomAccessLevel access_level = 2;
+  uint32 max_participants = 3;       // 0 = default (300)
+  VideoQualityPreset default_quality = 4;
+  bool waiting_room_enabled = 5;
+  bool chat_enabled = 6;
+  bool recording_allowed = 7;
+  map<string, string> metadata = 8;
+}
+
+message GetRoomRequest {
+  string room_id = 1;
+}
+
+message ListRoomsRequest {
+  RoomStatus status_filter = 1;      // UNSPECIFIED = all
+  uint32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListRoomsResponse {
+  repeated Room rooms = 1;
+  string next_page_token = 2;
+  uint32 total_count = 3;
+}
+
+message UpdateRoomRequest {
+  string room_id = 1;
+  optional string display_name = 2;
+  optional RoomAccessLevel access_level = 3;
+  optional uint32 max_participants = 4;
+  optional bool waiting_room_enabled = 5;
+  optional bool chat_enabled = 6;
+  optional bool recording_allowed = 7;
+  map<string, string> metadata = 8;
+}
+
+message EndRoomRequest {
+  string room_id = 1;
+}
+
+message EndRoomResponse {}
+
+// ── Auth ─────────────────────────────────────────────────────────
+
+message GenerateTokenRequest {
+  string room_id = 1;
+  string participant_identity = 2;
+  string participant_name = 3;
+  ParticipantRole role = 4;
+  google.protobuf.Duration ttl = 5;  // token lifetime; 0 = default (24h)
+}
+
+message GenerateTokenResponse {
+  string token = 1;
+  string livekit_url = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+// ── Participants ─────────────────────────────────────────────────
+
+message InviteRequest {
+  string room_id = 1;
+  InviteMethod method = 2;
+  string target = 3;                 // email, link, or Matrix user ID
+  ParticipantRole role = 4;
+  string message = 5;                // optional invite message
+}
+
+message InviteResponse {
+  string invite_id = 1;
+  string invite_url = 2;            // for LINK method
+}
+
+message KickRequest {
+  string room_id = 1;
+  string participant_identity = 2;
+  string reason = 3;
+}
+
+message KickResponse {}
+
+message UpdateRoleRequest {
+  string room_id = 1;
+  string participant_identity = 2;
+  ParticipantRole new_role = 3;
+}
+
+message MuteParticipantRequest {
+  string room_id = 1;
+  string participant_identity = 2;
+  bool mute_audio = 3;
+  bool mute_video = 4;
+}
+
+message MuteParticipantResponse {}
+
+// ── Recording ────────────────────────────────────────────────────
+
+message StartRecordingRequest {
+  string room_id = 1;
+  RecordingMode mode = 2;
+  RecordingOutput output = 3;
+  string rtmp_url = 4;              // required when output = RTMP
+  string custom_layout_url = 5;     // optional: custom egress template URL
+}
+
+message StopRecordingRequest {
+  string recording_id = 1;
+}
+
+message ListRecordingsRequest {
+  string room_id = 1;
+  uint32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListRecordingsResponse {
+  repeated Recording recordings = 1;
+  string next_page_token = 2;
+}
+
+message GetRecordingRequest {
+  string recording_id = 1;
+}
+
+message DeleteRecordingRequest {
+  string recording_id = 1;
+}
+
+message DeleteRecordingResponse {}
+
+// ── Captioning ───────────────────────────────────────────────────
+
+message StartCaptioningRequest {
+  string room_id = 1;
+  string language = 2;              // BCP-47; empty = auto-detect
+}
+
+message StopCaptioningRequest {
+  string room_id = 1;
+}
+
+message CaptioningStatus {
+  string room_id = 1;
+  CaptioningState state = 2;
+  string language = 3;
+  string error_message = 4;
+}
+
+// ── Chat ─────────────────────────────────────────────────────────
+
+message SendChatRequest {
+  string room_id = 1;
+  string content = 2;
+  string reply_to = 3;              // message id, empty if not a reply
+}
+
+message GetChatHistoryRequest {
+  string room_id = 1;
+  uint32 page_size = 2;
+  string page_token = 3;
+  google.protobuf.Timestamp before = 4;  // fetch messages before this time
+}
+
+message GetChatHistoryResponse {
+  repeated ChatMessage messages = 1;
+  string next_page_token = 2;
+}
+
+message DeleteChatMessageRequest {
+  string message_id = 1;
+}
+
+message DeleteChatMessageResponse {}
+
+// ── Reactions ────────────────────────────────────────────────────
+
+message SendReactionRequest {
+  string room_id = 1;
+  string emoji = 2;
+}
+
+message SendReactionResponse {}
+
+// ── Breakout rooms ───────────────────────────────────────────────
+
+message CreateBreakoutRequest {
+  string room_id = 1;
+  uint32 count = 2;                 // number of breakout rooms
+  repeated BreakoutAssignment assignments = 3;
+  google.protobuf.Duration auto_close_after = 4;  // 0 = manual close only
+}
+
+message BreakoutAssignment {
+  string participant_identity = 1;
+  uint32 breakout_index = 2;       // 0-based
+}
+
+message BreakoutRoomsResponse {
+  repeated BreakoutRoom rooms = 1;
+}
+
+message BreakoutRoom {
+  string id = 1;
+  string name = 2;
+  string livekit_room_name = 3;
+  repeated string participant_identities = 4;
+}
+
+message MergeBreakoutRequest {
+  string room_id = 1;               // parent room
+}
+
+message MergeBreakoutResponse {
+  uint32 participants_returned = 1;
+}
+
+message MoveToBreakoutRequest {
+  string room_id = 1;               // parent room
+  string participant_identity = 2;
+  string breakout_room_id = 3;
+}
+
+message MoveToBreakoutResponse {}
+
+// ── Scheduling ───────────────────────────────────────────────────
+
+message ScheduleMeetingRequest {
+  string display_name = 1;
+  string description = 2;
+  RoomAccessLevel access_level = 3;
+  VideoQualityPreset default_quality = 4;
+  repeated string invitee_emails = 5;
+  MeetingRecurrence recurrence = 6;
+  string recurrence_rule = 7;       // iCalendar RRULE, when recurrence = CUSTOM
+  google.protobuf.Timestamp starts_at = 8;
+  google.protobuf.Timestamp ends_at = 9;
+}
+
+message GetScheduledMeetingRequest {
+  string meeting_id = 1;
+}
+
+message ListScheduledMeetingsRequest {
+  google.protobuf.Timestamp from = 1;
+  google.protobuf.Timestamp to = 2;
+  uint32 page_size = 3;
+  string page_token = 4;
+}
+
+message ListScheduledMeetingsResponse {
+  repeated ScheduledMeeting meetings = 1;
+  string next_page_token = 2;
+}
+
+message UpdateScheduledMeetingRequest {
+  string meeting_id = 1;
+  optional string display_name = 2;
+  optional string description = 3;
+  optional RoomAccessLevel access_level = 4;
+  repeated string invitee_emails = 5;
+  optional MeetingRecurrence recurrence = 6;
+  optional string recurrence_rule = 7;
+  optional google.protobuf.Timestamp starts_at = 8;
+  optional google.protobuf.Timestamp ends_at = 9;
+}
+
+message CancelScheduledMeetingRequest {
+  string meeting_id = 1;
+  bool notify_invitees = 2;
+}
+
+message CancelScheduledMeetingResponse {}
+
+// ── Meeting summary ──────────────────────────────────────────────
+
+message GetMeetingSummaryRequest {
+  string room_id = 1;
+}
+
+message ListMeetingSummariesRequest {
+  uint32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListMeetingSummariesResponse {
+  repeated MeetingSummary summaries = 1;  // full_transcript omitted
+  string next_page_token = 2;
+}
+
+// ── Keepalive ────────────────────────────────────────────────────
+
+message Ping {
+  uint64 timestamp = 1;
+}
+
+message Pong {
+  uint64 timestamp = 1;
+}
+
+// ── LiveKit webhook ingestion ────────────────────────────────────
+// Not an RPC — sunbeam-meet exposes an HTTP POST endpoint for
+// LiveKit webhook delivery. Included here for documentation.
+//
+// POST /webhooks/livekit
+// Header: Authorization: <signed JWT>
+// Body: livekit.WebhookEvent (from livekit-protocol)
+//
+// Events handled:
+//   room_started, room_finished,
+//   participant_joined, participant_left,
+//   track_published, track_unpublished,
+//   egress_started, egress_updated, egress_ended,
+//   ingress_started, ingress_ended

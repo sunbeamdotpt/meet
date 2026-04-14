@@ -1,0 +1,197 @@
+syntax = "proto3";
+package sunbeam.agent.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Agent worker protocol — sunbeam-meet dispatches jobs to remote
+// Rust agent workers over gRPC. Workers join LiveKit rooms as
+// hidden participants to process audio (STT) or text (summarization).
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// Implemented by each agent worker binary. sunbeam-meet is the caller.
+service AgentWorker {
+  // Assign a job to this worker. Worker joins the LiveKit room as a
+  // hidden participant and begins processing.
+  rpc StartJob(StartJobRequest) returns (StartJobResponse);
+
+  // Stop a running job. Worker leaves the room and cleans up.
+  rpc StopJob(StopJobRequest) returns (StopJobResponse);
+
+  // Query the worker's current state.
+  rpc GetStatus(GetStatusRequest) returns (WorkerStatus);
+
+  // Long-lived status stream. Worker pushes status changes, job
+  // completions, errors, and heartbeats. sunbeam-meet opens one
+  // stream per worker on startup and reconnects on failure.
+  rpc StatusStream(StatusStreamRequest) returns (stream WorkerEvent);
+}
+
+// Called by agent workers back to sunbeam-meet to store results.
+service AgentCallback {
+  // Store a completed meeting summary. Called by the mistral-summarizer
+  // worker when a room ends and the summary is ready.
+  rpc SubmitSummary(SubmitSummaryRequest) returns (SubmitSummaryResponse);
+
+  // Report a job failure with context. sunbeam-meet updates room state
+  // and notifies connected participants via the JoinRoom stream.
+  rpc ReportFailure(ReportFailureRequest) returns (ReportFailureResponse);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Enums
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+enum AgentKind {
+  AGENT_KIND_UNSPECIFIED = 0;
+  AGENT_KIND_WHISPER_STT = 1;        // audio → text (Scaleway Whisper API)
+  AGENT_KIND_MISTRAL_SUMMARIZER = 2; // transcript → summary (Mistral API)
+}
+
+enum JobState {
+  JOB_STATE_UNSPECIFIED = 0;
+  JOB_STATE_STARTING = 1;           // connecting to LiveKit room
+  JOB_STATE_RUNNING = 2;            // actively processing
+  JOB_STATE_STOPPING = 3;           // graceful shutdown in progress
+  JOB_STATE_STOPPED = 4;            // clean exit
+  JOB_STATE_FAILED = 5;             // unrecoverable error
+}
+
+enum WorkerHealth {
+  WORKER_HEALTH_UNSPECIFIED = 0;
+  WORKER_HEALTH_HEALTHY = 1;
+  WORKER_HEALTH_DEGRADED = 2;       // e.g. API rate-limited, high latency
+  WORKER_HEALTH_UNHEALTHY = 3;      // cannot accept new jobs
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// AgentWorker RPCs
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+message StartJobRequest {
+  string job_id = 1;                 // unique, assigned by sunbeam-meet
+  string room_name = 2;             // LiveKit room name
+  string token = 3;                  // LiveKit access token (hidden participant)
+  string livekit_url = 4;           // wss://meet.sunbeam.pt
+  AgentKind kind = 5;
+  AgentConfig config = 6;
+}
+
+message AgentConfig {
+  // ── Whisper STT config ──
+  string language = 1;               // BCP-47; empty = auto-detect
+  bool interim_results = 2;          // publish partial transcripts
+
+  // ── Mistral summarizer config ──
+  string mistral_model = 3;          // e.g. "mistral-large-latest"
+  uint32 max_summary_tokens = 4;     // 0 = default
+  repeated string summary_prompts = 5;  // custom instructions for the summary
+
+  // ── Shared ──
+  string callback_url = 6;           // sunbeam-meet's AgentCallback endpoint
+}
+
+message StartJobResponse {
+  bool accepted = 1;
+  string reason = 2;                 // human-readable; populated on rejection
+}
+
+message StopJobRequest {
+  string job_id = 1;
+  bool graceful = 2;                // true = finish current segment; false = drop immediately
+}
+
+message StopJobResponse {}
+
+// ── Status ───────────────────────────────────────────────────────
+
+message GetStatusRequest {}
+
+message WorkerStatus {
+  string worker_id = 1;
+  AgentKind kind = 2;
+  WorkerHealth health = 3;
+  uint32 active_jobs = 4;
+  uint32 max_jobs = 5;
+  repeated JobInfo active_job_info = 6;
+  google.protobuf.Timestamp started_at = 7;
+  string version = 8;               // binary version for rollout tracking
+}
+
+message JobInfo {
+  string job_id = 1;
+  string room_name = 2;
+  JobState state = 3;
+  google.protobuf.Timestamp started_at = 4;
+  google.protobuf.Duration uptime = 5;
+}
+
+// ── Status stream ────────────────────────────────────────────────
+
+message StatusStreamRequest {
+  bool include_heartbeats = 1;       // if true, send periodic heartbeats
+}
+
+message WorkerEvent {
+  oneof payload {
+    WorkerStatus status = 1;         // full status snapshot
+    JobStateChanged job_state = 2;   // single job state transition
+    JobError job_error = 3;          // non-fatal job error (e.g. API timeout, retrying)
+    Heartbeat heartbeat = 4;
+  }
+}
+
+message JobStateChanged {
+  string job_id = 1;
+  string room_name = 2;
+  JobState previous = 3;
+  JobState current = 4;
+  string detail = 5;                // optional context
+}
+
+message JobError {
+  string job_id = 1;
+  string room_name = 2;
+  string error = 3;
+  bool will_retry = 4;
+  uint32 retry_count = 5;
+}
+
+message Heartbeat {
+  google.protobuf.Timestamp timestamp = 1;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// AgentCallback RPCs
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+message SubmitSummaryRequest {
+  string job_id = 1;
+  string room_id = 2;
+  string summary_markdown = 3;
+  repeated ActionItem action_items = 4;
+  string full_transcript = 5;
+  google.protobuf.Duration meeting_duration = 6;
+  repeated string attendee_identities = 7;
+}
+
+message ActionItem {
+  string description = 1;
+  string assignee_identity = 2;
+  string assignee_name = 3;
+}
+
+message SubmitSummaryResponse {
+  string summary_id = 1;            // stored summary's ID
+}
+
+message ReportFailureRequest {
+  string job_id = 1;
+  string room_id = 2;
+  AgentKind kind = 3;
+  string error = 4;
+  bool is_fatal = 5;                // true = job cannot recover
+}
+
+message ReportFailureResponse {}
