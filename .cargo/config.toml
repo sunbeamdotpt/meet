@@ -1,0 +1,5 @@
+[alias]
+xtest-unit = ["nextest", "run", "--workspace", "--exclude-lib", "--no-fail-fast"]
+xtest-integration = ["nextest", "run", "--workspace", "--run-ignored", "only", "--no-fail-fast"]
+xcov = ["llvm-cov", "nextest", "--workspace", "--fail-under-lines", "85"]
+xlint = ["clippy", "--workspace", "--all-targets", "--", "-D", "warnings"]
