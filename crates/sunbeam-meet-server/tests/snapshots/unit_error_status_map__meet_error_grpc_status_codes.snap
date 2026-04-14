@@ -1,0 +1,25 @@
+---
+source: crates/sunbeam-meet-server/tests/unit_error_status_map.rs
+assertion_line: 55
+expression: mapping
+---
+- - not_found
+  - NotFound
+- - already_exists
+  - AlreadyExists
+- - permission_denied
+  - PermissionDenied
+- - unauthenticated
+  - Unauthenticated
+- - invalid_argument
+  - InvalidArgument
+- - failed_precondition
+  - FailedPrecondition
+- - backpressure
+  - ResourceExhausted
+- - resource_exhausted
+  - ResourceExhausted
+- - unavailable
+  - Unavailable
+- - internal
+  - Internal

@@ -1,0 +1,15 @@
+# cargo-llvm-cov config. Consumed implicitly when run from the repo root.
+#
+# CI invokes:
+#   cargo llvm-cov --workspace --fail-under-lines 85 \
+#     --ignore-filename-regex '(tests/|/target/|sunbeam-meet-proto/)' \
+#     nextest --profile ci
+#
+# The floor is 85% line coverage per DESIGN §8. Integration tests push the
+# number up; unit tests alone will not hit 85.
+
+[llvm-cov]
+fail-under-lines = 85
+
+# Exclude generated code and the test tree itself from the denominator.
+ignore-filename-regex = "(tests/|/target/|sunbeam-meet-proto/src/lib\\.rs)"

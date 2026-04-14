@@ -1,0 +1,47 @@
+# Nextest profiles for sunbeam-meet.
+#
+# `default`  — fast, mock-free unit tests only. No external services required.
+# `integration` — full suite including tests that hit shared sunbeam dev services
+#                 (Postgres, Valkey, NATS, SeaweedFS, Stalwart, Kratos, Keto,
+#                 LiveKit). Requires env vars listed in the integration test
+#                 file headers (see `tests/it_*.rs`).
+#
+# Run:
+#   cargo nextest run --profile default
+#   cargo nextest run --profile integration
+#
+# CLAUDE.md forbids `#[ignore]` on infra tests; separation is enforced here
+# via test-binary name filter instead.
+
+[profile.default]
+# Exclude every test binary whose name starts with `it_` — those are the
+# real-service integration suites.
+default-filter = "not binary(/^it_/)"
+failure-output = "immediate-final"
+fail-fast = false
+slow-timeout = { period = "30s", terminate-after = 2 }
+
+[profile.default.junit]
+path = "junit.xml"
+
+[profile.integration]
+# Run everything — unit + `it_*` integration binaries.
+default-filter = "all()"
+failure-output = "immediate-final"
+fail-fast = false
+# Integration tests hit real services; give them more headroom.
+slow-timeout = { period = "120s", terminate-after = 2 }
+# Serial by default would be safer, but shared dev services are designed for
+# concurrent use. Keep parallelism but cap it so we don't flood LiveKit.
+test-threads = 4
+
+[profile.integration.junit]
+path = "junit-integration.xml"
+
+[profile.ci]
+# Used by CI — same as default but stricter timeouts + JUnit output.
+default-filter = "not binary(/^it_/)"
+failure-output = "immediate-final"
+fail-fast = false
+retries = 0
+slow-timeout = { period = "30s", terminate-after = 2 }

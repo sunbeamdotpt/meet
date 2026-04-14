@@ -1,0 +1,42 @@
+---
+source: crates/sunbeam-meet-server/tests/unit_error_payload_shape.rs
+assertion_line: 44
+expression: rendered
+---
+[
+  [
+    "not_found",
+    {
+      "code": "not_found",
+      "message": "room 'x'"
+    }
+  ],
+  [
+    "permission_denied",
+    {
+      "code": "permission_denied",
+      "message": "not owner"
+    }
+  ],
+  [
+    "invalid_argument",
+    {
+      "code": "invalid_argument",
+      "message": "bad slug"
+    }
+  ],
+  [
+    "backpressure",
+    {
+      "code": "backpressure",
+      "message": "backpressure"
+    }
+  ],
+  [
+    "unauthenticated",
+    {
+      "code": "unauthenticated",
+      "message": "unauthenticated"
+    }
+  ]
+]
