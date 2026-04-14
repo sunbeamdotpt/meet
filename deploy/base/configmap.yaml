@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sunbeam-meet-config
+data:
+  # Runtime toggles + presets. Secrets live in the `sunbeam-meet-secrets`
+  # Secret (see deploy/README.md).
+  RUST_LOG: "info,sunbeam_meet_server=debug,connect_rs=info"
+  BIND_ADDR: "0.0.0.0:8080"
+  METRICS_ADDR: "0.0.0.0:9090"
+
+  # Quality presets (PLAN §Quality presets). The server reads this JSON blob
+  # and hands grants to LiveKit token mint.
+  QUALITY_PRESETS_JSON: |
+    {
+      "AUTO":   {"resolution":"adaptive","fps":0,"bitrate_kbps":0,"codec":"VP9","svc":"L3T3_KEY"},
+      "LOW":    {"resolution":"640x360","fps":30,"bitrate_kbps":400,"codec":"VP9","svc":"L1T3"},
+      "MEDIUM": {"resolution":"1280x720","fps":30,"bitrate_kbps":2500,"codec":"VP9","svc":"L2T3"},
+      "HIGH":   {"resolution":"1920x1080","fps":60,"bitrate_kbps":8000,"codec":"VP9","svc":"L3T3_KEY"},
+      "ULTRA":  {"resolution":"3840x2160","fps":60,"bitrate_kbps":20000,"codec":"AV1","svc":"L3T3_KEY"}
+    }
+
+  # Egress destination template — placeholders substituted per recording.
+  EGRESS_TEMPLATE_JSON: |
+    {
+      "s3": {
+        "endpoint": "${S3_ENDPOINT}",
+        "bucket":   "${S3_BUCKET}",
+        "key":      "recordings/{room_id}/{egress_id}.mp4",
+        "force_path_style": true
+      }
+    }
+
+  # Feature flags.
+  FEATURE_BREAKOUT_ROOMS: "true"
+  FEATURE_CAPTIONS: "true"
+  FEATURE_SUMMARIES: "true"
+  FEATURE_SCHEDULING: "true"
+
+  # Backpressure / limits.
+  JOIN_ROOM_CHANNEL_CAPACITY: "256"
+  MAX_PARTICIPANTS_PER_ROOM: "300"
+
+  # Agent worker dispatch.
+  AGENT_WORKER_DISPATCH_STRATEGY: "round_robin"
+  AGENT_WORKER_STATUS_STREAM_RECONNECT_MS: "2000"

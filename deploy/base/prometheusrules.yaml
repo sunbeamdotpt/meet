@@ -1,0 +1,110 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: sunbeam-meet
+  labels:
+    app.kubernetes.io/name: sunbeam-meet
+    release: kube-prometheus-stack
+    team: sunbeam-meet
+spec:
+  groups:
+    - name: sunbeam-meet.recording
+      interval: 30s
+      rules:
+        - alert: SunbeamMeetRecordingFailureRateHigh
+          expr: |
+            (
+              sum(rate(sunbeam_meet_egress_total{result="failure"}[10m]))
+              /
+              clamp_min(sum(rate(sunbeam_meet_egress_total[10m])), 1e-9)
+            ) > 0.10
+          for: 10m
+          labels:
+            severity: warning
+            team: sunbeam-meet
+            service: sunbeam-meet
+          annotations:
+            summary: "sunbeam-meet: >10% recording failures over 10m"
+            description: |
+              Egress failure rate is {{ $value | humanizePercentage }}.
+              Check LiveKit Egress logs and SeaweedFS availability.
+            runbook_url: "https://src.sunbeam.pt/sunbeam/runbooks/wiki/sunbeam-meet-recording"
+
+    - name: sunbeam-meet.rooms
+      interval: 30s
+      rules:
+        - alert: SunbeamMeetRoomAtCapacity
+          expr: max(sunbeam_meet_room_participants) by (room_id) >= 300
+          for: 2m
+          labels:
+            severity: warning
+            team: sunbeam-meet
+            service: sunbeam-meet
+          annotations:
+            summary: "Room {{ $labels.room_id }} at 300-participant cap"
+            description: |
+              Room has hit the configured MAX_PARTICIPANTS_PER_ROOM. Further
+              joins will be refused until participants leave.
+            runbook_url: "https://src.sunbeam.pt/sunbeam/runbooks/wiki/sunbeam-meet-capacity"
+
+    - name: sunbeam-meet.rpc
+      interval: 30s
+      rules:
+        - alert: SunbeamMeetJoinRoomLatencyP99High
+          expr: |
+            histogram_quantile(
+              0.99,
+              sum by (le) (rate(sunbeam_meet_rpc_duration_seconds_bucket{rpc="JoinRoom",direction="server_send"}[5m]))
+            ) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+            team: sunbeam-meet
+            service: sunbeam-meet
+          annotations:
+            summary: "JoinRoom server-send p99 > 500ms"
+            description: |
+              Fan-out hub is slow delivering server-to-client messages.
+              Check for backpressure drops and NATS lag.
+            runbook_url: "https://src.sunbeam.pt/sunbeam/runbooks/wiki/sunbeam-meet-rpc-latency"
+
+    - name: sunbeam-meet.webhooks
+      interval: 30s
+      rules:
+        - alert: SunbeamMeetWebhookLagHigh
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (le) (rate(sunbeam_meet_webhook_lag_seconds_bucket[5m]))
+            ) > 5
+          for: 10m
+          labels:
+            severity: warning
+            team: sunbeam-meet
+            service: sunbeam-meet
+          annotations:
+            summary: "LiveKit webhook → hub lag p95 > 5s"
+            description: |
+              Webhooks are delayed translating into JoinRoom stream messages.
+              Clients will see stale participant / recording state.
+            runbook_url: "https://src.sunbeam.pt/sunbeam/runbooks/wiki/sunbeam-meet-webhooks"
+
+    - name: sunbeam-meet.agents
+      interval: 30s
+      rules:
+        - alert: SunbeamMeetAgentWorkerUnavailable
+          expr: |
+            (sum(sunbeam_meet_agent_workers_available) by (kind))
+            <
+            (sum(sunbeam_meet_agent_workers_required) by (kind))
+          for: 5m
+          labels:
+            severity: critical
+            team: sunbeam-meet
+            service: sunbeam-meet
+          annotations:
+            summary: "Agent worker pool {{ $labels.kind }} below required capacity"
+            description: |
+              Captioning or summarization will fail for new rooms.
+              Check sunbeam-agents deployments and StatusStream connectivity.
+            runbook_url: "https://src.sunbeam.pt/sunbeam/runbooks/wiki/sunbeam-meet-agents"

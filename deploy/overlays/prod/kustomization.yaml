@@ -1,0 +1,35 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: meet
+
+resources:
+  - ../../base
+
+images:
+  - name: registry.sunbeam.pt/sunbeam-meet
+    # TODO(release-engineer): pin to the released tag on each deploy. The
+    # one-at-a-time deploy rule (studio CLAUDE.md) forbids rolling `latest`.
+    newTag: v0.1.0
+
+replicas:
+  - name: sunbeam-meet
+    count: 3
+
+patches:
+  - target:
+      kind: Deployment
+      name: sunbeam-meet
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "500m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "512Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "4000m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "2Gi"

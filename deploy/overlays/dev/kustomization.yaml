@@ -1,0 +1,34 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: meet-dev
+
+resources:
+  - ../../base
+
+images:
+  - name: registry.sunbeam.pt/sunbeam-meet
+    newTag: dev
+
+replicas:
+  - name: sunbeam-meet
+    count: 1
+
+patches:
+  - target:
+      kind: Ingress
+      name: sunbeam-meet
+    patch: |
+      - op: replace
+        path: /spec/tls/0/hosts/0
+        value: meet.dev.sunbeam.pt
+      - op: replace
+        path: /spec/rules/0/host
+        value: meet.dev.sunbeam.pt
+  - target:
+      kind: ConfigMap
+      name: sunbeam-meet-config
+    patch: |
+      - op: replace
+        path: /data/RUST_LOG
+        value: "debug,sunbeam_meet_server=trace,connect_rs=debug"

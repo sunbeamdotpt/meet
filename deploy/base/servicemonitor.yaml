@@ -1,0 +1,20 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: sunbeam-meet
+  labels:
+    app.kubernetes.io/name: sunbeam-meet
+    # Must match the Prometheus `serviceMonitorSelector` in
+    # sbbb/base/monitoring/.
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: sunbeam-meet
+      app.kubernetes.io/component: server
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      honorLabels: false

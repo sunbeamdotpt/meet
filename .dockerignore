@@ -1,0 +1,46 @@
+# Build artefacts
+target/
+**/target/
+**/*.rs.bk
+
+# VCS
+.git/
+.gitignore
+.gitattributes
+
+# CI / local tooling
+.github/
+.direnv/
+.envrc
+.env
+.env.*
+!.env.example
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Tests & fixtures not needed for release build
+# NOTE: keep crates/*/tests/ — build.rs or doctests may reference them.
+# Exclude only top-level repo scratch.
+scratch/
+tmp/
+
+# Docs — none of these are needed inside the image
+*.md
+!crates/*/README.md
+
+# Deploy assets belong outside the image
+deploy/
+
+# Claude / agent scratch
+.claude/
+CLAUDE.md
+
+# Coverage
+*.profraw
+lcov.info
+coverage/

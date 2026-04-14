@@ -1,0 +1,31 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sunbeam-meet
+  annotations:
+    # cert-manager issues the TLS cert (studio uses the `letsencrypt-prod`
+    # ClusterIssuer — confirm in sbbb/base/cert-manager/).
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # Connect + gRPC + gRPC-Web all speak HTTP/2 end-to-end; make sure the
+    # ingress controller proxies h2c to the backend.
+    nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # The JoinRoom bidi stream is long-lived; keep buffering off.
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [meet.sunbeam.pt]
+      secretName: sunbeam-meet-tls
+  rules:
+    - host: meet.sunbeam.pt
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: sunbeam-meet
+                port:
+                  name: rpc

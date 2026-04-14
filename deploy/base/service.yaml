@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: sunbeam-meet
+  labels:
+    app.kubernetes.io/name: sunbeam-meet
+    app.kubernetes.io/component: server
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: sunbeam-meet
+    app.kubernetes.io/component: server
+  ports:
+    # Connect / gRPC / gRPC-Web multiplexed on one port (DESIGN §2, PLAN).
+    - name: rpc
+      port: 8080
+      targetPort: rpc
+      protocol: TCP
+      appProtocol: http2
+    - name: metrics
+      port: 9090
+      targetPort: metrics
+      protocol: TCP
+      appProtocol: http
