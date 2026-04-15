@@ -29,6 +29,9 @@ pub struct Metrics {
     pub egress_total: IntCounterVec,
     /// Webhook delivery lag (seconds), labelled by event type.
     pub webhook_lag_seconds: HistogramVec,
+    /// Counter of requests rejected by the per-IP rate limiter,
+    /// labelled by `route` (matched request URI path).
+    pub rate_limit_rejected: IntCounterVec,
 }
 
 static METRICS: OnceLock<Metrics> = OnceLock::new();
@@ -86,6 +89,13 @@ pub fn metrics() -> &'static Metrics {
             registry
         )
         .expect("register webhook_lag_seconds");
+        let rate_limit_rejected = register_int_counter_vec_with_registry!(
+            "rate_limit_rejected_total",
+            "Requests rejected by the per-IP rate limiter",
+            &["route"],
+            registry
+        )
+        .expect("register rate_limit_rejected_total");
         Metrics {
             registry,
             rpc_total,
@@ -95,6 +105,7 @@ pub fn metrics() -> &'static Metrics {
             agent_available,
             egress_total,
             webhook_lag_seconds,
+            rate_limit_rejected,
         }
     })
 }
