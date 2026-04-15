@@ -74,14 +74,17 @@ pub async fn history(
         r.page_size.min(500)
     });
 
-    let before = r
+    // `before = None` means "from now" — use Postgres `NOW()` rather than the
+    // server-process clock so a clock skew between the app host and the
+    // database host can't hide rows that were just inserted via the same DB.
+    let before: Option<chrono::DateTime<chrono::Utc>> = r
         .before
-        .and_then(|t| chrono::DateTime::<chrono::Utc>::from_timestamp(t.seconds, t.nanos as u32))
-        .unwrap_or_else(chrono::Utc::now);
+        .and_then(|t| chrono::DateTime::<chrono::Utc>::from_timestamp(t.seconds, t.nanos as u32));
 
     let ids: Vec<Uuid> = sqlx::query_scalar(
         "SELECT id FROM chat_messages
-         WHERE room_id = $1 AND deleted_at IS NULL AND created_at < $2
+         WHERE room_id = $1 AND deleted_at IS NULL
+               AND created_at < COALESCE($2, NOW())
          ORDER BY created_at DESC LIMIT $3",
     )
     .bind(room_id)
