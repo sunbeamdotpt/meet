@@ -89,9 +89,28 @@ impl CalDavClient {
         }
     }
 
+    /// Build the request URL for a given UID, percent-encoding the filename
+    /// segment. Required for Stalwart v0.15 which keys stored objects by the
+    /// percent-encoded path — raw `@` in the UID would PUT as one key and
+    /// 404 on GET. Using `Url::path_segments_mut` handles encoding uniformly.
+    fn event_url(&self, uid: &str) -> String {
+        use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
+        // `url::Url::path_segments_mut().push()` only escapes `/`, `%`, and
+        // controls — it leaves `@` as-is, which Stalwart then stores under
+        // a different key than it resolves on GET. Encoding with a strict
+        // set (anything non-alphanumeric, minus `.` / `-` which are always
+        // pchar-safe) sidesteps that.
+        let filename = format!(
+            "{}.ics",
+            utf8_percent_encode(uid, NON_ALPHANUMERIC).collect::<String>()
+        );
+        let base = self.url.trim_end_matches('/');
+        format!("{base}/{filename}")
+    }
+
     /// PUT an iCalendar object at `{url}/{uid}.ics`.
     pub async fn put_event(&self, uid: &str, ics: &str) -> Result<String> {
-        let url = format!("{}/{uid}.ics", self.url.trim_end_matches('/'));
+        let url = self.event_url(uid);
         let res = self
             .http
             .put(&url)
@@ -121,7 +140,7 @@ impl CalDavClient {
     /// DELETE an iCalendar object by UID. `etag` is optional and, if present,
     /// is sent as `If-Match` to guard against racing updates.
     pub async fn delete_event(&self, uid: &str, etag: &str) -> Result<()> {
-        let url = format!("{}/{uid}.ics", self.url.trim_end_matches('/'));
+        let url = self.event_url(uid);
         let mut req = self
             .http
             .delete(url)
@@ -139,14 +158,26 @@ impl CalDavClient {
         Ok(())
     }
 
-    /// Test-facing constructor: connect to a CalDAV URL using empty creds.
-    /// Integration tests drive a dev Stalwart instance that accepts this.
+    /// Test-facing constructor: connect to a CalDAV URL. Basic-auth creds
+    /// may be encoded as userinfo in the URL (e.g.
+    /// `http://admin:admin@host/dav/cal/_42/default`) — we parse them out
+    /// and send them via `Authorization: Basic` so the server sees proper
+    /// auth on every request (reqwest would otherwise drop userinfo).
     pub async fn connect(url: &str) -> Result<Self> {
+        let parsed = reqwest::Url::parse(url)
+            .map_err(|e| Error::Internal(anyhow::anyhow!("caldav url: {e}")))?;
+        // reqwest::Url stores userinfo percent-encoded; dev creds are
+        // plain ASCII (admin/admin), so raw is fine here.
+        let username = parsed.username().to_owned();
+        let password = parsed.password().unwrap_or_default().to_owned();
+        let mut clean = parsed.clone();
+        let _ = clean.set_username("");
+        let _ = clean.set_password(None);
         Ok(Self {
             http: reqwest::Client::new(),
-            url: url.to_owned(),
-            username: String::new(),
-            password: String::new(),
+            url: clean.to_string().trim_end_matches('/').to_owned(),
+            username,
+            password,
         })
     }
 
@@ -169,7 +200,7 @@ impl CalDavClient {
     /// Fetch an event by UID, parsing structured fields from the returned
     /// ICS. Returns `Ok(None)` on 404.
     pub async fn get_event(&self, uid: &str) -> Result<Option<Event>> {
-        let url = format!("{}/{uid}.ics", self.url.trim_end_matches('/'));
+        let url = self.event_url(uid);
         let res = self
             .http
             .get(&url)
@@ -217,7 +248,7 @@ impl CalDavClient {
             invitees: update.invitees.unwrap_or_default(),
         };
         let ics = render_ics(&merged);
-        let url = format!("{}/{uid}.ics", self.url.trim_end_matches('/'));
+        let url = self.event_url(uid);
         let res = self
             .http
             .put(&url)
