@@ -1,0 +1,36 @@
+# Fixture used by it_config_loading tests.
+# Contains the minimal set of required fields with sentinel values that the
+# tests assert against. Optional fields are omitted here and supplied via env
+# vars in specific test cases.
+
+bind_addr     = "0.0.0.0:9900"
+metrics_addr  = "0.0.0.0:9901"
+database_url  = "postgres://meet:meet@localhost:5432/meet_fixture"
+valkey_url    = "redis://localhost:6379"
+nats_url      = "nats://localhost:4222"
+
+[livekit]
+url        = "wss://livekit.fixture.test"
+http_url   = "https://livekit.fixture.test"
+api_key    = "fixture-api-key"
+api_secret = "fixture-api-secret-long-enough-xxxxx"
+
+[kratos]
+public_url = "http://kratos.fixture.test:4433"
+admin_url  = "http://kratos.fixture.test:4434"
+
+[keto]
+read_url  = "http://keto.fixture.test:4466"
+write_url = "http://keto.fixture.test:4467"
+
+[s3]
+endpoint           = "http://seaweedfs.fixture.test:8333"
+recordings_bucket  = "fixture-recordings"
+access_key         = "fixture-access-key"
+secret_key         = "fixture-secret-key"
+region             = "eu-west-1"
+
+[caldav]
+url      = "http://stalwart.fixture.test:8080/dav/cal/admin/default"
+username = "fixture-user"
+password = "fixture-password"
