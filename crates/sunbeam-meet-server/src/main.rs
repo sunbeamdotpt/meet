@@ -41,8 +41,22 @@ async fn main() -> anyhow::Result<()> {
         .add_service(agent_svc)
         .into_axum_router();
 
-    let app = grpc_router
-        .merge(webhooks::router(state.clone()))
+    // Public, rate-limited surface: gRPC + webhooks. The limiter keys by
+    // client IP via `SmartIpKeyExtractor` (prefers `x-forwarded-for` when
+    // present — we sit behind an ingress).
+    let mut public = grpc_router.merge(webhooks::router(state.clone()));
+    if let Some(governor) = sunbeam_meet_server::middleware::rate_limit::layer(&config.rate_limit) {
+        // Order matters: governor must be the INNER layer so it produces the
+        // 429; `rate_limit_response` wraps it as the OUTER layer so it sees
+        // the rejection on the response path and rewrites the body.
+        public = public.layer(governor).layer(axum::middleware::from_fn(
+            sunbeam_meet_server::middleware::rate_limit::rate_limit_response,
+        ));
+    }
+
+    // `/metrics` lives outside the rate limiter so Prometheus scrapes never
+    // compete with client traffic for tokens.
+    let app = public
         .merge(metrics::router())
         .layer(tower_http::trace::TraceLayer::new_for_http());
 
