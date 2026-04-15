@@ -6,7 +6,7 @@
 //!
 //! Flow:
 //!   1. sunbeam-meet mints a JWT for `room = test-xxx`, `identity = probe`.
-//!   2. Connect to LiveKit as that participant (via LiveKit server API).
+//!   2. Connect to LiveKit as that participant via the `livekit` RTC SDK.
 //!   3. List participants via the LiveKit API — probe must be present.
 //!   4. Leave, delete the room, done.
 //!
@@ -15,6 +15,7 @@
 
 mod common;
 
+use common::publisher::Publisher;
 use common::{env_required, unique_room_slug, wait_for, TestResult, DEFAULT_WAIT};
 use std::time::Duration;
 use sunbeam_meet_proto::meet::v1::ParticipantRole;
@@ -47,10 +48,10 @@ async fn minted_token_actually_joins_livekit_room() -> TestResult {
     );
     let token = client.mint_token(&grant, Duration::from_secs(300))?;
 
-    // Use the LiveKit client SDK (through `clients::livekit::probe_join`) to
-    // actually connect with the token. This verifies the JWT is valid end
-    // to end, not just structurally.
-    let probe = client.probe_join(&room_name, &token).await?;
+    // Real RTC join via the `livekit` SDK. A successful connect proves the
+    // token is valid end-to-end (LiveKit rejects the signal handshake on
+    // a bad JWT).
+    let publisher = Box::pin(Publisher::connect(&url, &token)).await?;
 
     // Poll list-participants until the probe shows up.
     let found = wait_for(DEFAULT_WAIT, || async {
@@ -66,7 +67,7 @@ async fn minted_token_actually_joins_livekit_room() -> TestResult {
     assert_eq!(found.identity, "probe-1");
     assert_eq!(found.name, "Probe");
 
-    probe.disconnect().await?;
+    publisher.disconnect().await;
     client.delete_room(&room_name).await?;
     Ok(())
 }
@@ -87,7 +88,7 @@ async fn hidden_agent_token_does_not_appear_in_public_participant_list() -> Test
         name: "Whisper".into(),
     });
     let token = client.mint_token(&grant, Duration::from_secs(300))?;
-    let probe = client.probe_join(&room_name, &token).await?;
+    let publisher = Box::pin(Publisher::connect(&url, &token)).await?;
 
     // Give the join a moment, then list. `hidden=true` means LiveKit's
     // participant iterator excludes this identity from the visible list
@@ -100,7 +101,7 @@ async fn hidden_agent_token_does_not_appear_in_public_participant_list() -> Test
         "hidden participant must not appear in the public list",
     );
 
-    probe.disconnect().await?;
+    publisher.disconnect().await;
     client.delete_room(&room_name).await?;
     Ok(())
 }

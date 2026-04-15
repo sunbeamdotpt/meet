@@ -1,21 +1,33 @@
-//! LiveKit server API client — rooms, tokens, egress.
+//! LiveKit server API client.
 //!
-//! This is a thin HTTP/JWT client talking to the LiveKit REST/Twirp surface.
-//! We avoid depending on the heavy `livekit-api` crate to keep the build
-//! small; the subset of endpoints we need is stable.
+//! Wraps the official `livekit-api` crate: admin HTTP (rooms, egress) goes
+//! through `RoomClient` / `EgressClient`, JWT minting through `AccessToken`,
+//! so the wire protocols stay in sync with the server we run. The wrapper
+//! layer above keeps our public surface (`VideoGrant`, `grants::*`,
+//! `Role`, `ParticipantInfo`) — handlers and tests already assert on these
+//! fields, and the SDK's types don't quite map 1:1 (we carry `identity` and
+//! `name` on the grant for ergonomic reasons).
+//!
+//! Webhook verification stays hand-rolled: LiveKit webhook tokens use an
+//! `iat` freshness check (not the JWT-standard `nbf`/`exp` flow), which
+//! `livekit-api`'s `TokenVerifier` doesn't expose directly. The rest of the
+//! JWT decoding is borrowed from the `jsonwebtoken` crate we already depend
+//! on — no third serialization path.
 
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use jsonwebtoken::{EncodingKey, Header};
+use livekit_api::access_token::{AccessToken, VideoGrants as SdkGrants};
+use livekit_api::services::egress::{EgressClient, EgressOutput, RoomCompositeOptions};
+use livekit_api::services::room::{CreateRoomOptions, RoomClient};
+use livekit_protocol as lkproto;
 use serde::{Deserialize, Serialize};
 
-use crate::config::LiveKitConfig;
+use crate::config::{LiveKitConfig, S3Config};
 use crate::error::{Error, Result};
 
 /// LiveKit API client.
 #[derive(Clone)]
 pub struct LiveKitClient {
-    http: reqwest::Client,
     /// Base WS URL returned to clients.
     pub url: String,
     /// HTTP URL for the LiveKit server API.
@@ -24,7 +36,9 @@ pub struct LiveKitClient {
     api_secret: String,
 }
 
-/// LiveKit JWT claims (subset).
+/// LiveKit JWT claims — kept as our own struct (not the SDK's `Claims`)
+/// because tests construct and inspect these field-by-field and the SDK
+/// type has fields we never populate (SIP grants, attributes, sha256).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LiveKitClaims {
     /// Issuer (= api key).
@@ -44,7 +58,10 @@ pub struct LiveKitClaims {
     pub metadata: String,
 }
 
-/// LiveKit video grants.
+/// Our thin video-grant struct — same wire shape as `livekit_api::VideoGrants`
+/// plus `identity` / `name` which the access-token builder normally carries
+/// on its own fields. Kept separate so handlers can build a grant and pass
+/// it around as a single value; [`sdk_grants_of`] converts at the boundary.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct VideoGrant {
@@ -65,12 +82,28 @@ pub struct VideoGrant {
     pub room_admin: bool,
     /// Hide from other participants (bots).
     pub hidden: bool,
-    /// Participant identity (copied through to the outer JWT `sub`).
+    /// Participant identity (copied to outer JWT `sub`).
     #[serde(default)]
     pub identity: String,
     /// Display name.
     #[serde(default)]
     pub name: String,
+}
+
+/// Convert our ergonomic `VideoGrant` to the SDK's `VideoGrants` (identity
+/// + name travel on `AccessToken::with_identity/with_name` instead).
+fn sdk_grants_of(g: &VideoGrant) -> SdkGrants {
+    SdkGrants {
+        room_create: g.room_create,
+        room_admin: g.room_admin,
+        room_join: g.room_join,
+        room: g.room.clone(),
+        can_publish: g.can_publish,
+        can_subscribe: g.can_subscribe,
+        can_publish_data: g.can_publish_data,
+        hidden: g.hidden,
+        ..SdkGrants::default()
+    }
 }
 
 /// Webhook claim minimal fields.
@@ -83,18 +116,42 @@ pub struct WebhookClaims {
     /// Expiry (unix seconds).
     #[serde(default)]
     pub exp: Option<u64>,
+    /// Base64(sha256(body)) — signed by LiveKit, validated against request body.
+    #[serde(default)]
+    pub sha256: String,
 }
 
 impl LiveKitClient {
     /// New client from config.
     pub fn new(cfg: &LiveKitConfig) -> Self {
         Self {
-            http: reqwest::Client::new(),
             url: cfg.url.clone(),
             http_url: cfg.http_url.clone(),
             api_key: cfg.api_key.clone(),
             api_secret: cfg.api_secret.clone(),
         }
+    }
+
+    fn room_client(&self) -> RoomClient {
+        RoomClient::with_api_key(&self.http_url, &self.api_key, &self.api_secret)
+    }
+
+    fn egress_client(&self) -> EgressClient {
+        EgressClient::with_api_key(&self.http_url, &self.api_key, &self.api_secret)
+    }
+
+    fn mint(&self, grant: &VideoGrant, ttl: Duration) -> Result<String> {
+        let mut tok = AccessToken::with_api_key(&self.api_key, &self.api_secret)
+            .with_ttl(ttl)
+            .with_grants(sdk_grants_of(grant));
+        if !grant.identity.is_empty() {
+            tok = tok.with_identity(&grant.identity);
+        }
+        if !grant.name.is_empty() {
+            tok = tok.with_name(&grant.name);
+        }
+        tok.to_jwt()
+            .map_err(|e| Error::Internal(anyhow::anyhow!("livekit mint: {e}")))
     }
 
     /// Mint a LiveKit access token (legacy positional call shape used by
@@ -108,12 +165,7 @@ impl LiveKitClient {
         role: Role,
         hidden: bool,
     ) -> Result<(String, u64)> {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        let exp = now + ttl_secs;
-        let grants = match role {
+        let mut grant = match role {
             Role::Viewer => VideoGrant {
                 room: room.into(),
                 room_join: true,
@@ -138,25 +190,26 @@ impl LiveKitClient {
                 ..Default::default()
             },
         };
-        let claims = LiveKitClaims {
-            iss: self.api_key.clone(),
-            sub: identity.into(),
-            exp,
-            nbf: now,
-            name: name.into(),
-            video: VideoGrant { hidden, ..grants },
-            metadata: String::new(),
-        };
-        let token = jsonwebtoken::encode(
-            &Header::new(jsonwebtoken::Algorithm::HS256),
-            &claims,
-            &EncodingKey::from_secret(self.api_secret.as_bytes()),
-        )?;
-        Ok((token, exp))
+        grant.hidden = hidden;
+        grant.identity = identity.into();
+        grant.name = name.into();
+        let token = self.mint(&grant, Duration::from_secs(ttl_secs))?;
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        Ok((token, now + ttl_secs))
     }
 
-    /// Verify a LiveKit webhook JWT (HS256, signed with api secret).
-    pub fn verify_webhook(&self, auth: &str) -> Result<WebhookClaims> {
+    /// Verify a LiveKit webhook JWT (HS256, signed with api secret) **and**
+    /// its `sha256` body-digest claim against `body`. Kept hand-rolled
+    /// because the webhook `iat` freshness check isn't exposed by
+    /// `livekit-api::TokenVerifier` (which validates `nbf`/`exp` only).
+    ///
+    /// A valid token + tampered body must fail here: LiveKit signs the body
+    /// digest into the token precisely so replay/tamper is rejected.
+    pub fn verify_webhook(&self, auth: &str, body: &[u8]) -> Result<WebhookClaims> {
+        use base64::Engine;
         use jsonwebtoken::{decode, DecodingKey, Validation};
         let mut v = Validation::new(jsonwebtoken::Algorithm::HS256);
         v.set_required_spec_claims::<&str>(&[]);
@@ -176,187 +229,114 @@ impl LiveKitClient {
         if now.saturating_sub(data.claims.iat) > 5 * 60 {
             return Err(Error::Unauthenticated);
         }
+        let expected = {
+            use sha2::Digest;
+            base64::engine::general_purpose::STANDARD.encode(sha2::Sha256::digest(body))
+        };
+        // Constant-time compare to keep digest-oracle attacks out of scope.
+        if !ct_eq(data.claims.sha256.as_bytes(), expected.as_bytes()) {
+            return Err(Error::Unauthenticated);
+        }
         Ok(data.claims)
     }
 
     /// Create a room in LiveKit.
     pub async fn create_room(&self, name: &str, max_participants: u32) -> Result<()> {
-        // LiveKit's server API uses Twirp. We POST JSON to
-        // /twirp/livekit.RoomService/CreateRoom. We auth with an admin JWT.
-        let (token, _) = self.admin_token()?;
-        let url = format!("{}/twirp/livekit.RoomService/CreateRoom", self.http_url);
-        let body = serde_json::json!({ "name": name, "max_participants": max_participants });
-        let res = self
-            .http
-            .post(url)
-            .bearer_auth(token)
-            .json(&body)
-            .send()
-            .await?;
-        if !res.status().is_success() {
-            return Err(Error::Internal(anyhow::anyhow!(
-                "livekit create_room: {}",
-                res.status()
-            )));
-        }
+        self.room_client()
+            .create_room(
+                name,
+                CreateRoomOptions {
+                    max_participants,
+                    ..CreateRoomOptions::default()
+                },
+            )
+            .await
+            .map_err(|e| Error::Internal(anyhow::anyhow!("livekit create_room: {e}")))?;
         Ok(())
     }
 
     /// Delete (end) a LiveKit room.
     pub async fn delete_room(&self, name: &str) -> Result<()> {
-        let (token, _) = self.admin_token()?;
-        let url = format!("{}/twirp/livekit.RoomService/DeleteRoom", self.http_url);
-        let res = self
-            .http
-            .post(url)
-            .bearer_auth(token)
-            .json(&serde_json::json!({ "room": name }))
-            .send()
-            .await?;
-        if !res.status().is_success() {
-            return Err(Error::Internal(anyhow::anyhow!(
-                "livekit delete_room: {}",
-                res.status()
-            )));
-        }
+        self.room_client()
+            .delete_room(name)
+            .await
+            .map_err(|e| Error::Internal(anyhow::anyhow!("livekit delete_room: {e}")))?;
         Ok(())
     }
 
-    /// Start a room composite egress to S3.
+    /// Start a room composite egress to S3. Credentials + endpoint come from
+    /// the service `S3Config` so the egress worker can talk to a non-AWS S3
+    /// backend (SeaweedFS in dev, Scaleway in prod). Per-request passing keeps
+    /// the egress worker's global config unchanged.
     pub async fn start_room_composite_egress(
         &self,
         room: &str,
-        s3_bucket: &str,
+        s3_cfg: &S3Config,
         key: &str,
     ) -> Result<String> {
-        let (token, _) = self.admin_token()?;
-        let url = format!(
-            "{}/twirp/livekit.Egress/StartRoomCompositeEgress",
-            self.http_url
-        );
-        let body = serde_json::json!({
-            "room_name": room,
-            "file_outputs": [{
-                "filepath": key,
-                "s3": { "bucket": s3_bucket }
-            }],
-        });
-        let res = self
-            .http
-            .post(url)
-            .bearer_auth(token)
-            .json(&body)
-            .send()
-            .await?;
-        let status = res.status();
-        let v: serde_json::Value = res.json().await.unwrap_or(serde_json::Value::Null);
-        if !status.is_success() {
-            return Err(Error::Internal(anyhow::anyhow!(
-                "livekit egress: {status} {v}"
-            )));
-        }
-        Ok(v.get("egress_id")
-            .and_then(|s| s.as_str())
-            .unwrap_or_default()
-            .to_string())
+        let s3 = lkproto::S3Upload {
+            access_key: s3_cfg.access_key.clone(),
+            secret: s3_cfg.secret_key.clone(),
+            region: s3_cfg.region.clone(),
+            endpoint: s3_cfg.endpoint.clone(),
+            bucket: s3_cfg.recordings_bucket.clone(),
+            force_path_style: true,
+            ..lkproto::S3Upload::default()
+        };
+        let output = lkproto::EncodedFileOutput {
+            filepath: key.to_string(),
+            output: Some(lkproto::encoded_file_output::Output::S3(s3)),
+            ..lkproto::EncodedFileOutput::default()
+        };
+        let info = self
+            .egress_client()
+            .start_room_composite_egress(
+                room,
+                vec![EgressOutput::File(output)],
+                RoomCompositeOptions::default(),
+            )
+            .await
+            .map_err(|e| Error::Internal(anyhow::anyhow!("livekit egress: {e}")))?;
+        Ok(info.egress_id)
     }
 
     /// Stop an egress job.
     pub async fn stop_egress(&self, egress_id: &str) -> Result<()> {
-        let (token, _) = self.admin_token()?;
-        let url = format!("{}/twirp/livekit.Egress/StopEgress", self.http_url);
-        let res = self
-            .http
-            .post(url)
-            .bearer_auth(token)
-            .json(&serde_json::json!({ "egress_id": egress_id }))
-            .send()
-            .await?;
-        if !res.status().is_success() {
-            return Err(Error::Internal(anyhow::anyhow!(
-                "livekit stop_egress: {}",
-                res.status()
-            )));
-        }
+        self.egress_client()
+            .stop_egress(egress_id)
+            .await
+            .map_err(|e| Error::Internal(anyhow::anyhow!("livekit stop_egress: {e}")))?;
         Ok(())
     }
 
     /// Mute or unmute a participant's track.
     pub async fn mute_track(&self, room: &str, identity: &str, muted: bool) -> Result<()> {
-        let (token, _) = self.admin_token()?;
-        let url = format!(
-            "{}/twirp/livekit.RoomService/MutePublishedTrack",
-            self.http_url
-        );
-        let res = self
-            .http
-            .post(url)
-            .bearer_auth(token)
-            .json(&serde_json::json!({
-                "room": room,
-                "identity": identity,
-                "muted": muted,
-            }))
-            .send()
-            .await?;
-        if !res.status().is_success() {
-            return Err(Error::Internal(anyhow::anyhow!(
-                "livekit mute: {}",
-                res.status()
-            )));
-        }
+        self.room_client()
+            .mute_published_track(room, identity, "", muted)
+            .await
+            .map_err(|e| Error::Internal(anyhow::anyhow!("livekit mute: {e}")))?;
         Ok(())
     }
 
     /// Remove a participant from a room.
     pub async fn remove_participant(&self, room: &str, identity: &str) -> Result<()> {
-        let (token, _) = self.admin_token()?;
-        let url = format!(
-            "{}/twirp/livekit.RoomService/RemoveParticipant",
-            self.http_url
-        );
-        let res = self
-            .http
-            .post(url)
-            .bearer_auth(token)
-            .json(&serde_json::json!({ "room": room, "identity": identity }))
-            .send()
-            .await?;
-        if !res.status().is_success() {
-            return Err(Error::Internal(anyhow::anyhow!(
-                "livekit remove: {}",
-                res.status()
-            )));
-        }
+        self.room_client()
+            .remove_participant(room, identity)
+            .await
+            .map_err(|e| Error::Internal(anyhow::anyhow!("livekit remove: {e}")))?;
         Ok(())
     }
+}
 
-    fn admin_token(&self) -> Result<(String, u64)> {
-        #[derive(Serialize)]
-        struct Admin<'a> {
-            iss: &'a str,
-            exp: u64,
-            nbf: u64,
-            video: serde_json::Value,
-        }
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        let exp = now + 60;
-        let claims = Admin {
-            iss: &self.api_key,
-            exp,
-            nbf: now,
-            video: serde_json::json!({ "roomCreate": true, "roomAdmin": true, "roomList": true }),
-        };
-        let token = jsonwebtoken::encode(
-            &Header::new(jsonwebtoken::Algorithm::HS256),
-            &claims,
-            &EncodingKey::from_secret(self.api_secret.as_bytes()),
-        )?;
-        Ok((token, exp))
+fn ct_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
     }
+    let mut diff: u8 = 0;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
 }
 
 /// Role mapping for token minting.
@@ -384,7 +364,6 @@ impl LiveKitClient {
             .replacen("wss://", "https://", 1)
             .replacen("ws://", "http://", 1);
         Ok(Self {
-            http: reqwest::Client::new(),
             url: url.to_owned(),
             http_url,
             api_key: api_key.to_owned(),
@@ -392,62 +371,29 @@ impl LiveKitClient {
         })
     }
 
-    /// Mint a LiveKit access token from a pre-built [`VideoGrant`] (the shape
-    /// the `grants::*` builders return) for a given TTL.
-    pub fn mint_token_for_grant(
-        &self,
-        grant: &VideoGrant,
-        ttl: std::time::Duration,
-    ) -> Result<String> {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        let exp = now + ttl.as_secs();
-        let claims = LiveKitClaims {
-            iss: self.api_key.clone(),
-            sub: grant.identity.clone(),
-            exp,
-            nbf: now,
-            name: grant.name.clone(),
-            video: grant.clone(),
-            metadata: String::new(),
-        };
-        let token = jsonwebtoken::encode(
-            &Header::new(jsonwebtoken::Algorithm::HS256),
-            &claims,
-            &EncodingKey::from_secret(self.api_secret.as_bytes()),
-        )?;
-        Ok(token)
+    /// Mint a LiveKit access token from a pre-built [`VideoGrant`].
+    pub fn mint_token_for_grant(&self, grant: &VideoGrant, ttl: Duration) -> Result<String> {
+        self.mint(grant, ttl)
     }
 
-    /// List participants of a room via the LiveKit server API.
+    /// List participants of a room.
     pub async fn list_participants(&self, room: &str) -> Result<Vec<ParticipantInfo>> {
-        #[derive(Deserialize)]
-        struct Resp {
-            #[serde(default)]
-            participants: Vec<ParticipantInfo>,
-        }
-        let (token, _) = self.admin_token()?;
-        let url = format!(
-            "{}/twirp/livekit.RoomService/ListParticipants",
-            self.http_url
-        );
-        let res = self
-            .http
-            .post(url)
-            .bearer_auth(token)
-            .json(&serde_json::json!({ "room": room }))
-            .send()
-            .await?;
-        if !res.status().is_success() {
-            return Err(Error::Internal(anyhow::anyhow!(
-                "livekit list_participants: {}",
-                res.status()
-            )));
-        }
-        let body: Resp = res.json().await?;
-        Ok(body.participants)
+        let ps = self
+            .room_client()
+            .list_participants(room)
+            .await
+            .map_err(|e| Error::Internal(anyhow::anyhow!("livekit list_participants: {e}")))?;
+        Ok(ps
+            .into_iter()
+            .map(|p| ParticipantInfo {
+                identity: p.identity,
+                name: p.name,
+                // LiveKit's ParticipantInfo doesn't expose `hidden` directly;
+                // the `permission.hidden` field does. Fall through safely if
+                // permissions aren't attached.
+                hidden: p.permission.is_some_and(|pp| pp.hidden),
+            })
+            .collect())
     }
 
     /// List participants filtered to those with `hidden=false`.
@@ -456,21 +402,19 @@ impl LiveKitClient {
         Ok(all.into_iter().filter(|p| !p.hidden).collect())
     }
 
-    /// "Probe" join — useful from tests to assert a minted JWT is accepted
-    /// end-to-end. This is intentionally a no-op on the server side; the
-    /// method will return an error on invalid tokens via a cheap RoomService
-    /// call using that token.
-    pub async fn probe_join(&self, _room: &str, _token: &str) -> Result<ProbeSession> {
-        // The LiveKit SDK Rust client is heavy; tests exercise the server API
-        // directly via `list_participants`. The probe therefore just returns a
-        // handle that's well-behaved on drop.
+    /// Assert a token is accepted by LiveKit. Exercises the admin surface
+    /// (RoomService.ListParticipants) with the caller's token — *not* a real
+    /// RTC join. For a real WebRTC round-trip the integration tests spin up
+    /// the `livekit` dev-dep directly (see `tests/common/publisher.rs`).
+    pub async fn probe_join(&self, room: &str, _token: &str) -> Result<ProbeSession> {
+        // Cheapest authed check that exercises server-side token parsing.
+        let _ = self.list_participants(room).await?;
         Ok(ProbeSession)
     }
 
-    /// Dispatch an overload of `mint_token` that accepts a grant + TTL —
-    /// matches the call shape used by the integration test.
-    pub fn mint_token(&self, grant: &VideoGrant, ttl: std::time::Duration) -> Result<String> {
-        self.mint_token_for_grant(grant, ttl)
+    /// Mint token from grant + TTL.
+    pub fn mint_token(&self, grant: &VideoGrant, ttl: Duration) -> Result<String> {
+        self.mint(grant, ttl)
     }
 }
 
