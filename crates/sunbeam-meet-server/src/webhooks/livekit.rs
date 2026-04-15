@@ -63,6 +63,9 @@ pub enum WebhookAuthError {
         /// Wall-clock now.
         now: u64,
     },
+    /// Body digest in the `sha256` claim did not match the body.
+    #[error("body hash mismatch")]
+    BodyHashMismatch,
 }
 
 /// Verify a LiveKit-signed webhook JWT. HS256, signed with the API secret.
@@ -105,6 +108,38 @@ pub fn verify_webhook_jwt(token: &str, secret: &str) -> Result<WebhookClaims, We
     Ok(data.claims)
 }
 
+/// Verify a webhook JWT *and* the `sha256` body-digest claim. LiveKit signs
+/// `sha256(body)` into the token; replaying a valid token with a tampered
+/// body would otherwise sail past [`verify_webhook_jwt`]. Callers must use
+/// this when they have the body — which is always, in production.
+pub fn verify_webhook(
+    token: &str,
+    body: &[u8],
+    secret: &str,
+) -> Result<WebhookClaims, WebhookAuthError> {
+    use base64::Engine;
+    let claims = verify_webhook_jwt(token, secret)?;
+    let expected = {
+        use sha2::Digest;
+        base64::engine::general_purpose::STANDARD.encode(sha2::Sha256::digest(body))
+    };
+    if !constant_time_eq(claims.sha256.as_bytes(), expected.as_bytes()) {
+        return Err(WebhookAuthError::BodyHashMismatch);
+    }
+    Ok(claims)
+}
+
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff: u8 = 0;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 /// In-process webhook ingestor — pairs a [`crate::stream::join_room::Hub`]
 /// with an API secret. Tests construct this directly; production wires the
 /// axum handler below with a full `SharedState`.
@@ -129,7 +164,7 @@ impl Ingestor {
         token: &str,
         body: &[u8],
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let _ = verify_webhook_jwt(token, &self.api_secret)?;
+        let _ = verify_webhook(token, body, &self.api_secret)?;
         let evt: WebhookEvent = serde_json::from_slice(body)?;
         let Some(room) = evt.room.as_ref() else {
             return Ok(());
@@ -260,7 +295,7 @@ pub async fn handle(
 
     state
         .livekit
-        .verify_webhook(token)
+        .verify_webhook(token, body.as_bytes())
         .map_err(|e| (StatusCode::UNAUTHORIZED, e.to_string()))?;
 
     let evt: WebhookEvent = serde_json::from_str(&body)
@@ -309,34 +344,7 @@ pub async fn handle(
         return Ok(StatusCode::OK);
     }
 
-    let server_msg = match evt.event.as_str() {
-        "participant_joined" => evt.participant.as_ref().map(|p| {
-            mk(meet_server_message::Payload::ParticipantJoined(
-                ParticipantJoined {
-                    participant: Some(sunbeam_meet_proto::meet::v1::Participant {
-                        identity: p.identity.clone(),
-                        display_name: p.name.clone(),
-                        ..Default::default()
-                    }),
-                },
-            ))
-        }),
-        "participant_left" => evt.participant.as_ref().map(|p| {
-            mk(meet_server_message::Payload::ParticipantLeft(
-                ParticipantLeft {
-                    identity: p.identity.clone(),
-                    reason: "disconnected".into(),
-                },
-            ))
-        }),
-        "room_finished" => Some(mk(meet_server_message::Payload::RoomEnded(RoomEnded {
-            reason: "empty_timeout".into(),
-            ended_by: String::new(),
-        }))),
-        _ => None,
-    };
-
-    if let Some(msg) = server_msg {
+    if let Some(msg) = translate_event(&evt) {
         let subject = crate::events::nats::NatsPublisher::room_subject(&room_id);
         let bytes = msg.encode_to_vec();
         if let Err(e) = state.nats.publish(subject, bytes.into()).await {
