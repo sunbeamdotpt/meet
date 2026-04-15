@@ -39,6 +39,8 @@ hyper.workspace = true
 hyper-util.workspace = true
 tower.workspace = true
 tower-http.workspace = true
+tower_governor.workspace = true
+governor.workspace = true
 http.workspace = true
 http-body-util.workspace = true
 
@@ -46,6 +48,8 @@ sqlx.workspace = true
 redis.workspace = true
 async-nats.workspace = true
 reqwest.workspace = true
+url.workspace = true
+percent-encoding.workspace = true
 aws-config.workspace = true
 aws-sdk-s3.workspace = true
 
@@ -69,6 +73,8 @@ chrono.workspace = true
 time.workspace = true
 
 jsonwebtoken.workspace = true
+livekit-api.workspace = true
+livekit-protocol.workspace = true
 prometheus.workspace = true
 
 bytes.workspace = true
@@ -84,3 +90,4 @@ insta.workspace = true
 tempfile.workspace = true
 wiremock.workspace = true
 proptest.workspace = true
+livekit.workspace = true

@@ -1,0 +1,247 @@
+# Ephemeral integration-test services for sunbeam-meet.
+#
+# Usage:
+#   (cd dev/compose && docker compose up -d)
+#   direnv allow                         # repo .envrc points at these services
+#   cargo nextest run --profile integration
+#
+# These are REAL services (postgres, valkey, nats, seaweedfs, livekit,
+# stalwart), not mocks. State is ephemeral — `docker compose down -v`
+# wipes everything between runs.
+
+name: sunbeam-meet-it
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: meet
+      POSTGRES_PASSWORD: meet
+      POSTGRES_DB: meet
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U meet -d meet"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    command: ["valkey-server", "--save", "", "--appendonly", "no"]
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  nats:
+    image: nats:2.10-alpine
+    command: ["-js", "-m", "8222"]
+    ports: ["4222:4222", "8222:8222"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8222/healthz"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  # SeaweedFS S3 gateway. Single-node `server` mode exposes the S3 API on :8333.
+  # Anonymous access is fine for integration tests.
+  seaweedfs:
+    image: chrislusf/seaweedfs:3.77
+    command: >
+      server -dir=/data -s3 -s3.port=8333 -master.volumeSizeLimitMB=64
+    ports: ["8333:8333", "9333:9333", "8080:8080"]
+    volumes: ["seaweedfs-data:/data"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9333/cluster/healthz"]
+      interval: 3s
+      timeout: 2s
+      retries: 40
+
+  # LiveKit in dev mode with a single API key/secret pair. Redis-backed for
+  # webhook delivery, shares valkey.
+  livekit:
+    image: livekit/livekit-server:v1.10.1
+    command: ["--dev", "--config", "/etc/livekit.yaml"]
+    ports: ["7880:7880", "7881:7881", "7882:7882/udp"]
+    depends_on:
+      valkey:
+        condition: service_healthy
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:7880/"]
+      interval: 3s
+      timeout: 2s
+      retries: 40
+
+  # Stalwart mail + CalDAV server. Minimal dev config: admin user `admin`,
+  # password `admin`, CalDAV on :8080 → mapped to :8090 on host.
+  stalwart:
+    image: stalwartlabs/stalwart:v0.15.5-alpine
+    ports: ["8090:8080", "1025:25", "1143:143"]
+    volumes:
+      - stalwart-data:/opt/stalwart
+      - ./stalwart.toml:/opt/stalwart/etc/config.toml:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz/ready"]
+      interval: 5s
+      timeout: 2s
+      retries: 40
+
+  # Ory Keto — relation-tuple authz. Two ports: read (4466), write (4467).
+  # SQLite-backed so it's fully self-contained per compose-up.
+  keto:
+    image: oryd/keto:v26.2.0
+    command: ["serve", "-c", "/etc/keto/keto.yaml"]
+    ports: ["4466:4466", "4467:4467"]
+    volumes:
+      - keto-data:/tmp
+      - ./keto.yaml:/etc/keto/keto.yaml:ro
+    # First-boot: run `keto migrate up -y` to create the schema. We use a
+    # healthcheck that tolerates either a fresh boot or the (running after
+    # migrate) steady state — the helper `keto-migrate` service below
+    # handles the migration.
+    depends_on:
+      keto-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4466/health/ready"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  keto-migrate:
+    image: oryd/keto:v26.2.0
+    command: ["migrate", "up", "-y", "-c", "/etc/keto/keto.yaml"]
+    volumes:
+      - keto-data:/tmp
+      - ./keto.yaml:/etc/keto/keto.yaml:ro
+    restart: "no"
+
+  # Ory Kratos — identity + session service. Public on :4433, admin on :4434.
+  kratos:
+    image: oryd/kratos:v26.2.0
+    command: ["serve", "-c", "/etc/config/kratos/kratos.yaml", "--dev"]
+    ports: ["4433:4433", "4434:4434"]
+    volumes:
+      - kratos-data:/tmp
+      - ./kratos.yaml:/etc/config/kratos/kratos.yaml:ro
+      - ./kratos-identity.schema.json:/etc/config/kratos/identity.schema.json:ro
+    depends_on:
+      kratos-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4434/admin/health/ready"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  kratos-migrate:
+    image: oryd/kratos:v26.2.0
+    command: ["migrate", "sql", "-e", "-y", "-c", "/etc/config/kratos/kratos.yaml"]
+    volumes:
+      - kratos-data:/tmp
+      - ./kratos.yaml:/etc/config/kratos/kratos.yaml:ro
+      - ./kratos-identity.schema.json:/etc/config/kratos/identity.schema.json:ro
+    restart: "no"
+
+  # LiveKit Egress — room composite / track egress to SeaweedFS.
+  # Shares redis (valkey) + livekit keys. File outputs land in local tmpfs and
+  # get uploaded to SeaweedFS via s3 upload.
+  livekit-egress:
+    image: livekit/egress:v1.12.0
+    environment:
+      EGRESS_CONFIG_BODY: |
+        log_level: info
+        api_key: devkey
+        api_secret: devsecretdevsecretdevsecretdevsecretXX
+        ws_url: ws://livekit:7880
+        redis:
+          address: valkey:6379
+        insecure: true
+        s3:
+          access_key: any
+          secret: any
+          region: us-east-1
+          endpoint: http://seaweedfs:8333
+          force_path_style: true
+    cap_add:
+      - SYS_ADMIN
+    depends_on:
+      livekit:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+
+  # Linux-based runner for integration tests. The `livekit` Rust RTC SDK
+  # pulls a prebuilt libwebrtc whose darwin-arm64 build crashes inside
+  # `PeerConnectionFactory` on macOS 26 (Abseil/Objective-C ABI drift).
+  # Linux prebuilts are what LiveKit's own CI runs against, so we shell
+  # into this container to drive the integration suite.
+  #
+  # Usage:
+  #   (cd dev/compose && docker compose run --rm test-runner \
+  #       cargo nextest run --profile integration)
+  test-runner:
+    build:
+      context: ../..
+      dockerfile: dev/compose/test-runner.Dockerfile
+    # `profiles` keeps the container out of the default `up` — it only
+    # materializes when explicitly `run`ed. Avoids burning CPU on an image
+    # the host never uses directly.
+    profiles: ["test"]
+    volumes:
+      - ../..:/src
+      - test-runner-target:/target
+      - test-runner-cargo:/cargo
+    environment:
+      # In-network service names — the runner shares the compose network,
+      # so 127.0.0.1 isn't the right endpoint for peer services.
+      DATABASE_URL: postgres://meet:meet@postgres:5432/meet
+      VALKEY_URL: redis://valkey:6379
+      NATS_URL: nats://nats:4222
+      S3_ENDPOINT: http://seaweedfs:8333
+      S3_ACCESS_KEY: any
+      S3_SECRET_KEY: any
+      S3_REGION: us-east-1
+      S3_BUCKET: sunbeam-meet-it
+      # Stalwart v0.15 fallback-admin gets the synthetic account id
+      # _4294967295. The "default" calendar is auto-provisioned on first
+      # boot — it's the write-target for all CalDAV PUTs.
+      CALDAV_URL: http://admin:admin@stalwart:8080/dav/cal/_4294967295/default
+      CALDAV_USER: admin
+      CALDAV_PASSWORD: admin
+      LIVEKIT_URL: ws://livekit:7880
+      LIVEKIT_API_KEY: devkey
+      LIVEKIT_API_SECRET: devsecretdevsecretdevsecretdevsecretXX
+      KETO_READ_URL: http://keto:4466
+      KETO_WRITE_URL: http://keto:4467
+      KRATOS_PUBLIC_URL: http://kratos:4433
+      KRATOS_ADMIN_URL: http://kratos:4434
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_healthy
+      livekit:
+        condition: service_healthy
+      keto:
+        condition: service_healthy
+      kratos:
+        condition: service_healthy
+      stalwart:
+        condition: service_healthy
+
+volumes:
+  seaweedfs-data:
+  stalwart-data:
+  keto-data:
+  kratos-data:
+  test-runner-target:
+  test-runner-cargo:

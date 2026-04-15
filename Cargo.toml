@@ -78,6 +78,8 @@ async-nats = "0.38"
 
 # HTTP clients
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+url = "2"
+percent-encoding = "2"
 
 # Object storage (SeaweedFS via S3 API)
 aws-config = "1"
@@ -109,10 +111,37 @@ time = { version = "0.3", features = ["serde"] }
 # Auth / JWT
 jsonwebtoken = "9"
 
+# LiveKit — server admin SDK (rooms, egress, tokens, webhooks).
+# Default features: services-tokio + access-token + webhooks, which covers
+# every server-side surface we use. We pick `rustls-tls-webpki-roots` so we
+# match the rest of the workspace's rustls choice (no native-tls dep creep).
+livekit-api = { version = "0.4.18", default-features = false, features = [
+    "services-tokio",
+    "access-token",
+    "webhooks",
+    "rustls-tls-webpki-roots",
+] }
+# Protobuf types shared with `livekit-api` — needed to construct
+# `EncodedFileOutput` / `S3Upload` when starting egress. Pinned to the same
+# version `livekit-api` transitively depends on.
+livekit-protocol = "0.7.4"
+
+# LiveKit — RTC client SDK, dev-only. Used by integration tests to actually
+# join a room, publish tracks, and assert on peer-connection state so
+# composite egress has a publisher to record and `probe_join` is a real
+# round-trip. Pulls libwebrtc at build time (prebuilt, not from source) —
+# expect ~300MB download on first build.
+livekit = { version = "0.7.36", default-features = false, features = [
+    "tokio",
+    "rustls-tls-webpki-roots",
+] }
+
 # Metrics
 prometheus = "0.13"
 
 # Rate limiting / misc
+tower_governor = "0.4"
+governor = "0.6"
 bytes = "1"
 base64 = "0.22"
 hex = "0.4"

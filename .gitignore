@@ -5,7 +5,10 @@ Cargo.lock.bak
 *.swo
 .DS_Store
 .env
+.env.integration
 .env.local
+.envrc.local
+.claude/
 .direnv/
 .vscode/
 .idea/

@@ -1,3 +1,12 @@
+# macOS only: the LiveKit WebRTC SDK ships Objective-C categories
+# (RTCVideoEncoderVP9, RTCDefaultVideoEncoderFactory, …). Without `-ObjC`
+# the linker drops them, and the first dispatch — `+[RTCVideoEncoderVP9
+# scalabilityModes]` during PeerConnectionFactory construction — throws
+# `NSInvalidArgumentException: +[NSString stringForAbslStringView:]:
+# unrecognized selector`. See livekit/rust-sdks README (macOS section).
+[target.'cfg(target_os = "macos")']
+rustflags = ["-C", "link-arg=-ObjC"]
+
 [alias]
 xtest-unit = ["nextest", "run", "--workspace", "--exclude-lib", "--no-fail-fast"]
 xtest-integration = ["nextest", "run", "--workspace", "--run-ignored", "only", "--no-fail-fast"]
