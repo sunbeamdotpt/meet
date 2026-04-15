@@ -270,6 +270,17 @@ Webhook JWTs from LiveKit are verified against
 `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET`; reject on bad signature or stale
 `iat`.
 
+### Rate limiting
+
+A per-IP GCRA rate limiter (`tower_governor` with `SmartIpKeyExtractor`)
+wraps the public surface (gRPC + `/webhooks/livekit`). Defaults are 100
+rps sustained with a 200-token burst, tuned under `RateLimitConfig` in
+`config.rs`. Rejections return HTTP 429 with
+`{"code":"rate_limited","message":…}` and bump
+`rate_limit_rejected_total{route=…}`. `/metrics` (and any future
+`/healthz`) are mounted outside the limiter so probes and scrapers can
+never be throttled.
+
 ---
 
 ## Observability

@@ -28,12 +28,17 @@ cargo build --workspace
 
 The service links against shared Sunbeam dev instances — there are no local
 substitutes (per the studio "no mocks for infrastructure-facing code" rule).
-Copy `.env.example` (TODO: not yet checked in) and fill in the values below,
-then:
+For local hacking, bring up the ephemeral compose stack and let direnv load
+the matching env vars from the checked-in [`.envrc`](./.envrc):
 
 ```bash
+(cd dev/compose && docker compose up -d)
+direnv allow                       # one-time, after first clone or .envrc edit
 cargo run -p sunbeam-meet-server
 ```
+
+Per-machine overrides (e.g. pointing at the shared Kratos/Keto instances)
+go in `.envrc.local`, which is gitignored and auto-sourced by `.envrc`.
 
 ### Environment variables
 
@@ -73,7 +78,8 @@ shared dev services and needs the env vars above.
 # Unit — fast, no services.
 cargo nextest run --profile default
 
-# Integration — requires all shared dev services reachable.
+# Integration — requires the dev/compose stack (or shared services) reachable
+# and the env vars from .envrc loaded (`direnv allow` once).
 cargo nextest run --profile integration
 ```
 
