@@ -11,6 +11,7 @@ use uuid::Uuid;
 use crate::handlers::meet::{identity, parse_uuid};
 use crate::state::SharedState;
 use crate::storage::pg::new_id;
+use crate::storage::pg::rooms::{PgRoomAccessLevel, PgRoomStatus};
 
 /// Create a new room.
 pub async fn create(
@@ -95,9 +96,9 @@ pub async fn list(
 
     let status_filter =
         match RoomStatus::try_from(r.status_filter).unwrap_or(RoomStatus::Unspecified) {
-            RoomStatus::Waiting => Some("waiting"),
-            RoomStatus::Active => Some("active"),
-            RoomStatus::Ended => Some("ended"),
+            RoomStatus::Waiting => Some(PgRoomStatus::Waiting),
+            RoomStatus::Active => Some(PgRoomStatus::Active),
+            RoomStatus::Ended => Some(PgRoomStatus::Ended),
             // Unspecified means "no filter".
             RoomStatus::Unspecified => None,
         };
@@ -259,18 +260,8 @@ pub async fn load_room(state: &SharedState, id: Uuid) -> Result<Room, Status> {
         id: row.id.to_string(),
         name: row.slug,
         display_name: row.display_name,
-        access_level: match row.access_level.as_str() {
-            "public" => RoomAccessLevel::Public as i32,
-            "trusted" => RoomAccessLevel::Trusted as i32,
-            "restricted" => RoomAccessLevel::Restricted as i32,
-            _ => RoomAccessLevel::Unspecified as i32,
-        },
-        status: match row.status.as_str() {
-            "waiting" => RoomStatus::Waiting as i32,
-            "active" => RoomStatus::Active as i32,
-            "ended" => RoomStatus::Ended as i32,
-            _ => RoomStatus::Unspecified as i32,
-        },
+        access_level: RoomAccessLevel::from(row.access_level) as i32,
+        status: RoomStatus::from(row.status) as i32,
         max_participants: u32::try_from(row.max_participants).unwrap_or(0),
         default_quality: quality_from_str(&row.default_quality),
         waiting_room_enabled: row.waiting_room_enabled,
@@ -293,8 +284,8 @@ struct RoomRow {
     id: Uuid,
     slug: String,
     display_name: String,
-    access_level: String,
-    status: String,
+    access_level: PgRoomAccessLevel,
+    status: PgRoomStatus,
     max_participants: i32,
     default_quality: String,
     waiting_room_enabled: bool,
@@ -320,12 +311,12 @@ fn slugify(s: &str) -> String {
         + &Uuid::new_v4().simple().to_string()[..8]
 }
 
-fn enum_access(v: i32) -> &'static str {
+fn enum_access(v: i32) -> PgRoomAccessLevel {
     match RoomAccessLevel::try_from(v).unwrap_or(RoomAccessLevel::Unspecified) {
-        RoomAccessLevel::Public => "public",
-        RoomAccessLevel::Restricted => "restricted",
+        RoomAccessLevel::Public => PgRoomAccessLevel::Public,
+        RoomAccessLevel::Restricted => PgRoomAccessLevel::Restricted,
         // Trusted is the default for Unspecified per legacy semantics.
-        RoomAccessLevel::Trusted | RoomAccessLevel::Unspecified => "trusted",
+        RoomAccessLevel::Trusted | RoomAccessLevel::Unspecified => PgRoomAccessLevel::Trusted,
     }
 }
 

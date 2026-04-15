@@ -1,8 +1,11 @@
 //! Typed CRUD for the `rooms` table.
 //!
 //! Callers pass strongly-typed enums (`RoomAccessLevel`, `RoomStatus`,
-//! `VideoQualityPreset`) rather than raw strings; we translate at the SQL
-//! boundary.
+//! `VideoQualityPreset`) rather than raw strings; `RoomAccessLevel` and
+//! `RoomStatus` map onto Postgres enum types via the newtype wrappers
+//! [`PgRoomAccessLevel`] and [`PgRoomStatus`] defined in this module.
+//! `VideoQualityPreset` still round-trips through a TEXT column — see the
+//! `quality_*` helpers.
 
 use std::collections::BTreeMap;
 
@@ -11,6 +14,96 @@ use sqlx::PgPool;
 use sunbeam_meet_proto::meet::v1::{RoomAccessLevel, RoomStatus, VideoQualityPreset};
 use thiserror::Error;
 use uuid::Uuid;
+
+/// Newtype wrapping [`RoomAccessLevel`] so sqlx can encode/decode it as the
+/// Postgres `room_access_level` enum. The wrapper is necessary because the
+/// proto-generated enum lives in a foreign crate and cannot derive
+/// [`sqlx::Type`] directly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type)]
+#[sqlx(type_name = "room_access_level", rename_all = "snake_case")]
+pub enum PgRoomAccessLevel {
+    /// Anyone with the link can join.
+    Public,
+    /// Authenticated users can join.
+    Trusted,
+    /// Explicit invite required.
+    Restricted,
+}
+
+/// Unknown / non-canonical enum variant read from Postgres.
+#[derive(Debug, Error)]
+#[error("unexpected {kind} value read from Postgres: {value}")]
+pub struct UnknownEnumVariant {
+    /// Which column surfaced the bad value.
+    pub kind: &'static str,
+    /// The raw offender (e.g. `"unspecified"` or a Prost i32 default).
+    pub value: String,
+}
+
+impl From<PgRoomAccessLevel> for RoomAccessLevel {
+    fn from(v: PgRoomAccessLevel) -> Self {
+        match v {
+            PgRoomAccessLevel::Public => RoomAccessLevel::Public,
+            PgRoomAccessLevel::Trusted => RoomAccessLevel::Trusted,
+            PgRoomAccessLevel::Restricted => RoomAccessLevel::Restricted,
+        }
+    }
+}
+
+impl TryFrom<RoomAccessLevel> for PgRoomAccessLevel {
+    type Error = UnknownEnumVariant;
+
+    fn try_from(v: RoomAccessLevel) -> Result<Self, Self::Error> {
+        match v {
+            RoomAccessLevel::Public => Ok(PgRoomAccessLevel::Public),
+            RoomAccessLevel::Trusted => Ok(PgRoomAccessLevel::Trusted),
+            RoomAccessLevel::Restricted => Ok(PgRoomAccessLevel::Restricted),
+            RoomAccessLevel::Unspecified => Err(UnknownEnumVariant {
+                kind: "access_level",
+                value: "unspecified".to_owned(),
+            }),
+        }
+    }
+}
+
+/// Newtype wrapping [`RoomStatus`] so sqlx can encode/decode it as the
+/// Postgres `room_status` enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type)]
+#[sqlx(type_name = "room_status", rename_all = "snake_case")]
+pub enum PgRoomStatus {
+    /// Created, no participants yet.
+    Waiting,
+    /// At least one participant is connected.
+    Active,
+    /// Manually ended or `empty_timeout`.
+    Ended,
+}
+
+impl From<PgRoomStatus> for RoomStatus {
+    fn from(v: PgRoomStatus) -> Self {
+        match v {
+            PgRoomStatus::Waiting => RoomStatus::Waiting,
+            PgRoomStatus::Active => RoomStatus::Active,
+            PgRoomStatus::Ended => RoomStatus::Ended,
+        }
+    }
+}
+
+impl TryFrom<RoomStatus> for PgRoomStatus {
+    type Error = UnknownEnumVariant;
+
+    fn try_from(v: RoomStatus) -> Result<Self, Self::Error> {
+        match v {
+            RoomStatus::Waiting => Ok(PgRoomStatus::Waiting),
+            RoomStatus::Active => Ok(PgRoomStatus::Active),
+            RoomStatus::Ended => Ok(PgRoomStatus::Ended),
+            RoomStatus::Unspecified => Err(UnknownEnumVariant {
+                kind: "status",
+                value: "unspecified".to_owned(),
+            }),
+        }
+    }
+}
 
 /// Typed room row.
 #[derive(Debug, Clone)]
@@ -122,41 +215,18 @@ pub enum StoreError {
         /// Human-readable reason.
         reason: String,
     },
+    /// The DB handed us a value that doesn't map onto any known proto variant.
+    /// This indicates data corruption or an out-of-band mutation — we surface
+    /// it rather than silently defaulting, per CLAUDE.md.
+    #[error("invalid data: {0}")]
+    InvalidData(#[from] UnknownEnumVariant),
+    /// Caller passed `RoomAccessLevel::Unspecified` / `RoomStatus::Unspecified`
+    /// where a concrete variant was required.
+    #[error("invalid argument: {0}")]
+    InvalidArgument(String),
     /// Raw database error.
     #[error("database: {0}")]
     Database(#[from] sqlx::Error),
-}
-
-fn access_to_str(a: RoomAccessLevel) -> &'static str {
-    match a {
-        RoomAccessLevel::Unspecified | RoomAccessLevel::Public => "public",
-        RoomAccessLevel::Trusted => "trusted",
-        RoomAccessLevel::Restricted => "restricted",
-    }
-}
-
-fn access_from_str(s: &str) -> RoomAccessLevel {
-    match s {
-        "trusted" => RoomAccessLevel::Trusted,
-        "restricted" => RoomAccessLevel::Restricted,
-        _ => RoomAccessLevel::Public,
-    }
-}
-
-fn status_to_str(s: RoomStatus) -> &'static str {
-    match s {
-        RoomStatus::Unspecified | RoomStatus::Waiting => "waiting",
-        RoomStatus::Active => "active",
-        RoomStatus::Ended => "ended",
-    }
-}
-
-fn status_from_str(s: &str) -> RoomStatus {
-    match s {
-        "active" => RoomStatus::Active,
-        "ended" => RoomStatus::Ended,
-        _ => RoomStatus::Waiting,
-    }
 }
 
 fn quality_to_str(q: VideoQualityPreset) -> &'static str {
@@ -184,8 +254,8 @@ struct Row {
     id: Uuid,
     slug: String,
     display_name: String,
-    access_level: String,
-    status: String,
+    access_level: PgRoomAccessLevel,
+    status: PgRoomStatus,
     max_participants: i32,
     default_quality: String,
     waiting_room_enabled: bool,
@@ -205,8 +275,8 @@ impl From<Row> for Room {
             id: r.id,
             slug: r.slug,
             display_name: r.display_name,
-            access_level: access_from_str(&r.access_level),
-            status: status_from_str(&r.status),
+            access_level: r.access_level.into(),
+            status: r.status.into(),
             max_participants: r.max_participants,
             default_quality: quality_from_str(&r.default_quality),
             waiting_room_enabled: r.waiting_room_enabled,
@@ -226,24 +296,29 @@ const SELECT_COLS: &str = "id, slug, display_name, access_level, status, max_par
                            default_quality, waiting_room_enabled, chat_enabled, recording_allowed,\
                            created_by, livekit_room_name, metadata, created_at, started_at, ended_at";
 
+fn require_access(v: RoomAccessLevel) -> Result<PgRoomAccessLevel, StoreError> {
+    PgRoomAccessLevel::try_from(v).map_err(|e| StoreError::InvalidArgument(e.to_string()))
+}
+
 /// Insert a new room. Returns the created row.
 pub async fn create(pool: &PgPool, new: NewRoom) -> Result<Room, StoreError> {
     let id = Uuid::now_v7();
     let lk_name = format!("room-{id}");
     let metadata = sqlx::types::Json(new.metadata);
+    let access = require_access(new.access_level)?;
     let row = sqlx::query_as::<_, Row>(&format!(
         "INSERT INTO rooms (
             id, slug, display_name, access_level, status, max_participants,
             default_quality, waiting_room_enabled, chat_enabled, recording_allowed,
             created_by, livekit_room_name, metadata, created_at
         ) VALUES (
-            $1, $2, $3, $4, 'waiting', $5, $6, $7, $8, $9, $10, $11, $12::jsonb, NOW()
+            $1, $2, $3, $4, 'waiting'::room_status, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, NOW()
         ) RETURNING {SELECT_COLS}"
     ))
     .bind(id)
     .bind(&new.slug)
     .bind(&new.display_name)
-    .bind(access_to_str(new.access_level))
+    .bind(access)
     .bind(new.max_participants)
     .bind(quality_to_str(new.default_quality))
     .bind(new.waiting_room_enabled)
@@ -281,7 +356,12 @@ pub async fn get(pool: &PgPool, id: &Uuid) -> Result<Option<Room>, StoreError> {
 /// List rooms.
 pub async fn list(pool: &PgPool, filter: ListFilter) -> Result<RoomPage, StoreError> {
     let limit = i64::from(filter.page_size.unwrap_or(50).min(500));
-    let status_filter = filter.status.map(status_to_str);
+    let status_filter = match filter.status {
+        Some(s) => Some(
+            PgRoomStatus::try_from(s).map_err(|e| StoreError::InvalidArgument(e.to_string()))?,
+        ),
+        None => None,
+    };
     let rows: Vec<Row> = if let Some(st) = status_filter {
         sqlx::query_as::<_, Row>(&format!(
             "SELECT {SELECT_COLS} FROM rooms WHERE status = $1 ORDER BY created_at DESC LIMIT $2"
@@ -319,6 +399,7 @@ pub async fn update(pool: &PgPool, id: &Uuid, patch: RoomUpdate) -> Result<Room,
         .unwrap_or(current.waiting_room_enabled);
     let chat_enabled = patch.chat_enabled.unwrap_or(current.chat_enabled);
     let recording_allowed = patch.recording_allowed.unwrap_or(current.recording_allowed);
+    let access_pg = require_access(access_level)?;
 
     let row = sqlx::query_as::<_, Row>(&format!(
         "UPDATE rooms SET display_name = $2, access_level = $3, max_participants = $4,
@@ -328,7 +409,7 @@ pub async fn update(pool: &PgPool, id: &Uuid, patch: RoomUpdate) -> Result<Room,
     ))
     .bind(id)
     .bind(&display_name)
-    .bind(access_to_str(access_level))
+    .bind(access_pg)
     .bind(max_participants)
     .bind(quality_to_str(default_quality))
     .bind(waiting_room_enabled)
@@ -342,7 +423,8 @@ pub async fn update(pool: &PgPool, id: &Uuid, patch: RoomUpdate) -> Result<Room,
 /// Mark a room as ended.
 pub async fn end(pool: &PgPool, id: &Uuid, _reason: &str) -> Result<Room, StoreError> {
     let row = sqlx::query_as::<_, Row>(&format!(
-        "UPDATE rooms SET status = 'ended', ended_at = NOW() WHERE id = $1 RETURNING {SELECT_COLS}"
+        "UPDATE rooms SET status = 'ended'::room_status, ended_at = NOW() \
+         WHERE id = $1 RETURNING {SELECT_COLS}"
     ))
     .bind(id)
     .fetch_one(pool)

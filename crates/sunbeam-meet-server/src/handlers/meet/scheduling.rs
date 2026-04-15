@@ -10,6 +10,7 @@ use uuid::Uuid;
 use crate::handlers::meet::{identity, parse_uuid, rooms};
 use crate::state::SharedState;
 use crate::storage::pg::new_id;
+use crate::storage::pg::rooms::PgRoomAccessLevel;
 
 /// Create a scheduled meeting.
 pub async fn create(
@@ -57,7 +58,7 @@ pub async fn create(
     .bind(&id.id)
     .bind(&r.display_name)
     .bind(&r.description)
-    .bind(access_to_str(r.access_level))
+    .bind(access_pg(r.access_level))
     .bind(quality_to_str(r.default_quality))
     .bind(starts_dt)
     .bind(ends_dt)
@@ -189,11 +190,7 @@ async fn load(state: &SharedState, id: Uuid) -> Result<ScheduledMeeting, Status>
         display_name: row.title,
         description: row.description,
         organizer_identity: row.owner_identity,
-        access_level: match row.access_level.as_str() {
-            "public" => RoomAccessLevel::Public as i32,
-            "restricted" => RoomAccessLevel::Restricted as i32,
-            _ => RoomAccessLevel::Trusted as i32,
-        },
+        access_level: RoomAccessLevel::from(row.access_level) as i32,
         default_quality: match row.default_quality.as_str() {
             "low" => VideoQualityPreset::Low as i32,
             "medium" => VideoQualityPreset::Medium as i32,
@@ -225,7 +222,7 @@ struct Row {
     owner_identity: String,
     title: String,
     description: String,
-    access_level: String,
+    access_level: PgRoomAccessLevel,
     default_quality: String,
     starts_at: chrono::DateTime<chrono::Utc>,
     ends_at: chrono::DateTime<chrono::Utc>,
@@ -236,11 +233,11 @@ struct Row {
     updated_at: chrono::DateTime<chrono::Utc>,
 }
 
-fn access_to_str(v: i32) -> &'static str {
+fn access_pg(v: i32) -> PgRoomAccessLevel {
     match RoomAccessLevel::try_from(v).unwrap_or(RoomAccessLevel::Unspecified) {
-        RoomAccessLevel::Public => "public",
-        RoomAccessLevel::Restricted => "restricted",
-        _ => "trusted",
+        RoomAccessLevel::Public => PgRoomAccessLevel::Public,
+        RoomAccessLevel::Restricted => PgRoomAccessLevel::Restricted,
+        RoomAccessLevel::Trusted | RoomAccessLevel::Unspecified => PgRoomAccessLevel::Trusted,
     }
 }
 

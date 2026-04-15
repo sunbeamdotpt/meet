@@ -2,8 +2,11 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use sunbeam_meet_proto::meet::v1::{RoomAccessLevel, RoomStatus};
 use thiserror::Error;
 use uuid::Uuid;
+
+use crate::storage::pg::rooms::{PgRoomAccessLevel, PgRoomStatus};
 
 /// Maximum slug length (bytes / ASCII chars).
 pub const SLUG_MAX_LEN: usize = 255;
@@ -64,6 +67,10 @@ pub fn validate_slug(slug: &str) -> Result<(), SlugError> {
 }
 
 /// Persisted room row.
+///
+/// `access_level` and `status` use the canonical proto enums; the DB
+/// representation is a Postgres `ENUM` type and the sqlx boundary uses the
+/// `Pg…` newtype wrappers in [`crate::storage::pg::rooms`].
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct Room {
     /// UUID v7 primary key.
@@ -72,10 +79,12 @@ pub struct Room {
     pub slug: String,
     /// Human display name.
     pub display_name: String,
-    /// Access level ('public'|'trusted'|'restricted').
-    pub access_level: String,
-    /// Status ('waiting'|'active'|'ended').
-    pub status: String,
+    /// Access level.
+    #[sqlx(try_from = "PgRoomAccessLevel")]
+    pub access_level: RoomAccessLevel,
+    /// Status.
+    #[sqlx(try_from = "PgRoomStatus")]
+    pub status: RoomStatus,
     /// Max participants.
     pub max_participants: i32,
     /// Default video quality preset.
