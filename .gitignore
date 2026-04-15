@@ -9,6 +9,7 @@ Cargo.lock.bak
 .env.local
 .envrc.local
 .claude/
+docs/CODE_REVIEW.md
 .direnv/
 .vscode/
 .idea/
