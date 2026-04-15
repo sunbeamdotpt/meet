@@ -45,7 +45,7 @@ pub async fn start(
     let key = format!("recordings/{room_id}/{rec_id}.mp4");
     let egress_id = state
         .livekit
-        .start_room_composite_egress(&lk_name, &state.config.s3.recordings_bucket, &key)
+        .start_room_composite_egress(&lk_name, &state.config.s3, &key)
         .await
         .map_err(|e| {
             crate::metrics::metrics()

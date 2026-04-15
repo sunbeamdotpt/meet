@@ -21,7 +21,9 @@ pub struct HeadObject {
     pub content_length: u64,
 }
 
-/// Default bucket used by sunbeam-meet. Overridden via config when wired up.
+/// Default bucket used by sunbeam-meet. Overridden via `S3_BUCKET` env var at
+/// connect time so the dev compose stack (`sunbeam-meet-it`) and prod
+/// (`sunbeam-meet-recordings`) share one connect path.
 pub const DEFAULT_BUCKET: &str = "sunbeam-meet";
 
 /// Connect to an S3-compatible endpoint.
@@ -36,10 +38,36 @@ pub async fn connect(endpoint: &str, access_key: &str, secret_key: &str) -> Resu
     let s3_cfg = aws_sdk_s3::config::Builder::from(&cfg)
         .force_path_style(true)
         .build();
+    let bucket = std::env::var("S3_BUCKET").unwrap_or_else(|_| DEFAULT_BUCKET.to_owned());
     Ok(Client {
         inner: SdkClient::from_conf(s3_cfg),
-        bucket: DEFAULT_BUCKET.to_owned(),
+        bucket,
     })
+}
+
+impl Client {
+    /// Create the bucket if it does not already exist. Idempotent — a
+    /// `BucketAlreadyOwnedByYou` / 409 response is treated as success.
+    pub async fn ensure_bucket(&self) -> Result<()> {
+        match self.inner.create_bucket().bucket(&self.bucket).send().await {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                // Parse the structured error — never string-match on the raw
+                // message. SDK returns a typed service error we can classify.
+                use aws_sdk_s3::operation::create_bucket::CreateBucketError;
+                if let Some(svc) = e.as_service_error() {
+                    if matches!(
+                        svc,
+                        CreateBucketError::BucketAlreadyExists(_)
+                            | CreateBucketError::BucketAlreadyOwnedByYou(_)
+                    ) {
+                        return Ok(());
+                    }
+                }
+                Err(Error::Internal(anyhow::anyhow!("s3 create_bucket: {e}")))
+            }
+        }
+    }
 }
 
 impl Client {
@@ -57,13 +85,13 @@ impl Client {
                 content_length: u64::try_from(out.content_length().unwrap_or(0)).unwrap_or(0),
             })),
             Err(e) => {
-                // Fail-closed on errors that aren't "not found".
-                let msg = format!("{e}");
-                if msg.contains("NotFound") || msg.contains("404") {
-                    Ok(None)
-                } else {
-                    Err(Error::Internal(anyhow::anyhow!("s3 head: {e}")))
+                // Classify via the SDK's structured error, never by string
+                // matching. HeadObject's typed 404 variant is `NotFound`.
+                use aws_sdk_s3::operation::head_object::HeadObjectError;
+                if let Some(HeadObjectError::NotFound(_)) = e.as_service_error() {
+                    return Ok(None);
                 }
+                Err(Error::Internal(anyhow::anyhow!("s3 head: {e}")))
             }
         }
     }

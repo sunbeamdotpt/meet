@@ -4,6 +4,7 @@
 use sunbeam_meet_proto::meet::v1::{RecordingMode, RecordingOutput, RecordingStatus};
 
 use crate::clients::livekit::LiveKitClient;
+use crate::config::S3Config;
 use crate::error::Result;
 
 /// Recording status values.
@@ -18,9 +19,6 @@ pub const STATUS_STOPPED: &str = "stopped";
 pub const STATUS_SAVED: &str = "saved";
 /// Failed.
 pub const STATUS_FAILED: &str = "failed";
-
-/// Default object storage bucket for recordings.
-pub const DEFAULT_BUCKET: &str = "sunbeam-meet-recordings";
 
 /// Lightweight representation of an active / finalized recording.
 #[derive(Debug, Clone)]
@@ -51,7 +49,11 @@ pub struct StartArgs {
 }
 
 /// Start a LiveKit room composite egress, returning a [`Recording`] handle.
-pub async fn start_recording(lk: &LiveKitClient, args: StartArgs) -> Result<Recording> {
+pub async fn start_recording(
+    lk: &LiveKitClient,
+    s3: &S3Config,
+    args: StartArgs,
+) -> Result<Recording> {
     let key = format!(
         "{}/{}/{}.mp4",
         args.room_name,
@@ -59,7 +61,7 @@ pub async fn start_recording(lk: &LiveKitClient, args: StartArgs) -> Result<Reco
         uuid::Uuid::now_v7()
     );
     let egress_id = lk
-        .start_room_composite_egress(&args.room_name, DEFAULT_BUCKET, &key)
+        .start_room_composite_egress(&args.room_name, s3, &key)
         .await?;
     Ok(Recording {
         egress_id,
@@ -68,12 +70,16 @@ pub async fn start_recording(lk: &LiveKitClient, args: StartArgs) -> Result<Reco
     })
 }
 
-/// Stop an egress job and return a [`Recording`] in a terminal state.
-pub async fn stop_recording(lk: &LiveKitClient, egress_id: &str) -> Result<Recording> {
-    lk.stop_egress(egress_id).await?;
+/// Stop an egress job and return a [`Recording`] in a terminal state. The
+/// caller passes in the `Recording` returned by [`start_recording`] so the
+/// final value carries through the `storage_path` the egress worker will
+/// have uploaded to — LiveKit's `StopEgress` response doesn't echo the
+/// filepath back.
+pub async fn stop_recording(lk: &LiveKitClient, started: &Recording) -> Result<Recording> {
+    lk.stop_egress(&started.egress_id).await?;
     Ok(Recording {
-        egress_id: egress_id.to_owned(),
+        egress_id: started.egress_id.clone(),
         status: RecordingStatus::Stopping,
-        storage_path: String::new(),
+        storage_path: started.storage_path.clone(),
     })
 }

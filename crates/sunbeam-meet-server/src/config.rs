@@ -42,6 +42,49 @@ pub struct Config {
     /// List of configured agent workers for round-robin dispatch.
     #[serde(default)]
     pub agent_workers: Vec<AgentWorkerConfig>,
+    /// Per-IP rate limiting on the public HTTP/gRPC surface.
+    #[serde(default)]
+    pub rate_limit: RateLimitConfig,
+}
+
+/// Per-IP rate limiting configuration.
+///
+/// Applied by [`crate::middleware::rate_limit`] to the public HTTP/gRPC
+/// surface. `/healthz` and `/metrics` are deliberately excluded so probes and
+/// scrapers can never be throttled.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RateLimitConfig {
+    /// Sustained requests per second allowed per client IP.
+    #[serde(default = "default_rl_rps")]
+    pub requests_per_second: u32,
+    /// Burst capacity (bucket size) above the sustained rate.
+    #[serde(default = "default_rl_burst")]
+    pub burst: u32,
+    /// Master switch; when `false` the layer is a no-op.
+    #[serde(default = "default_rl_enabled")]
+    pub enabled: bool,
+}
+
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self {
+            requests_per_second: default_rl_rps(),
+            burst: default_rl_burst(),
+            enabled: default_rl_enabled(),
+        }
+    }
+}
+
+fn default_rl_rps() -> u32 {
+    100
+}
+
+fn default_rl_burst() -> u32 {
+    200
+}
+
+fn default_rl_enabled() -> bool {
+    true
 }
 
 /// LiveKit server + webhook credentials.
