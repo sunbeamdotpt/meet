@@ -27,7 +27,7 @@ futures.workspace = true
 async-trait.workspace = true
 async-stream.workspace = true
 
-tonic.workspace = true
+tonic = { workspace = true, features = ["tls-native-roots"] }
 tonic-web.workspace = true
 prost.workspace = true
 prost-types.workspace = true

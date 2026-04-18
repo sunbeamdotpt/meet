@@ -11,8 +11,9 @@ description = "Generated gRPC + Connect types for sunbeam.meet.v1 and sunbeam.ag
 
 [dependencies]
 tonic.workspace = true
+tonic-prost.workspace = true
 prost.workspace = true
 prost-types.workspace = true
 
 [build-dependencies]
-tonic-build.workspace = true
+tonic-prost-build.workspace = true
