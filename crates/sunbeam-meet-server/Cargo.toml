@@ -1,16 +1,13 @@
 [package]
 name = "sunbeam-meet-server"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-repository.workspace = true
-authors.workspace = true
-rust-version.workspace = true
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+repository = "https://src.sunbeam.pt/studio/sunbeam-meet"
+authors = ["Sunbeam Studios"]
+rust-version = "1.82"
 publish = false
 description = "sunbeam-meet service — LiveKit-backed video conferencing over Connect + gRPC."
-
-[lints]
-workspace = true
 
 [lib]
 name = "sunbeam_meet_server"
