@@ -166,7 +166,7 @@ pub struct AgentWorkerConfig {
 }
 
 fn default_bind() -> String {
-    "0.0.0.0:8080".into()
+    "0.0.0.0:3105".into()
 }
 
 fn default_metrics() -> String {

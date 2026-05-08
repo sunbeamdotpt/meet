@@ -1,0 +1,33 @@
+schema: 1
+project:
+  name: sunbeam-meet
+  kind: rust-bin
+  description: "LiveKit-backed video conferencing service (gRPC + Connect)."
+targets:
+  build:
+    exec: "cargo build --release"
+  test:
+    exec: [cargo, nextest, run]
+  lint:
+    exec: "cargo clippy -- -D warnings"
+  fmt:
+    exec: "cargo fmt"
+  clean:
+    exec: "cargo clean"
+  doc:
+    exec: "cargo doc --no-deps"
+deps:
+  services:
+    - postgres
+    - valkey
+    - nats
+    - livekit
+    - seaweedfs
+    - stalwart
+    - keto
+    - kratos
+tenant:
+  namespace: meet
+  host: meet.sunbeam.pt
+outputs:
+  - target/release/sunbeam-meet-server
