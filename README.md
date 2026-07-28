@@ -1,5 +1,8 @@
 # sunbeam-meet
 
+[![Matrix](https://img.shields.io/badge/chat-%23hello%3Asunbeam.pt-0dbd8b?logo=matrix)](https://matrix.to/#/#hello:sunbeam.pt)
+[![License](https://img.shields.io/github/license/sunbeamdotpt/meet)](LICENSE)
+
 Rust video conferencing service. Implements `sunbeam.meet.v1.MeetService` over
 Connect + gRPC + gRPC-Web on a single port (via [`connect-rust`] + `axum`),
 with LiveKit as the media backend. Replaces the legacy Django `meet/` app.
