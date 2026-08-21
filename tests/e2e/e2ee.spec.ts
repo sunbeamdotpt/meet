@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signInWithTestAccount } from './helpers';
+import { signInWithTestAccount, joinRoom, captureFeatureScreenshot } from './helpers';
 
 test('E2EE passphrase is derived and returned by connection details', async ({ page }) => {
   const roomName = `e2ee-${Date.now()}`;
@@ -25,4 +25,11 @@ test('E2EE passphrase is derived and returned by connection details', async ({ p
   });
   expect(typeof details.e2eePassphrase).toBe('string');
   expect(details.e2eePassphrase.length).toBeGreaterThan(0);
+
+  // Join the encrypted room and capture the meeting UI.
+  await joinRoom(page);
+  await page
+    .locator('[data-testid="meeting-controls"]')
+    .waitFor({ state: 'visible', timeout: 20000 });
+  await captureFeatureScreenshot(page, 'e2ee-connected-room');
 });

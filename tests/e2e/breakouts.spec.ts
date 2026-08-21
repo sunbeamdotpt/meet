@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signInWithTestAccount, joinRoom } from './helpers';
+import { signInWithTestAccount, joinRoom, captureFeatureScreenshot } from './helpers';
 
 test('host can assign a guest to a breakout room', async ({ browser }) => {
   const roomName = `breakouts-${Date.now()}`;
@@ -53,6 +53,7 @@ test('host can assign a guest to a breakout room', async ({ browser }) => {
   });
   await expect(guestPage.locator('[data-testid="breakout-banner"]')).toContainText('VIP Room');
   await expect(guestPage.locator('button:has-text("Join breakout room")')).toBeVisible();
+  await captureFeatureScreenshot(guestPage, 'breakouts-guest-assigned');
 
   // Host should see the active state.
   await expect(hostPage.locator('[data-testid="breakout-controls"]')).toContainText(

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signInWithTestAccount, joinRoom } from './helpers';
+import { signInWithTestAccount, joinRoom, captureFeatureScreenshot } from './helpers';
 
 test('host can raise and lower their hand', async ({ page }) => {
   const roomName = `raisehand-${Date.now()}`;
@@ -17,6 +17,7 @@ test('host can raise and lower their hand', async ({ page }) => {
   await page.locator('[data-testid="raise-hand-button"]').click();
   await expect(page.locator('[data-testid="raised-hands-panel"]')).toBeVisible({ timeout: 5000 });
   await expect(page.locator('[data-testid="raised-hands-panel"]')).toContainText('Hand Host');
+  await captureFeatureScreenshot(page, 'raise-hand-active');
 
   await page.locator('[data-testid="raise-hand-button"]').click();
   await expect(page.locator('[data-testid="raised-hands-panel"]')).not.toBeVisible({

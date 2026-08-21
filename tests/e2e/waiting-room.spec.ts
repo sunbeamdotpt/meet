@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signInWithTestAccount, joinRoom } from './helpers';
+import { signInWithTestAccount, joinRoom, captureFeatureScreenshot } from './helpers';
 
 test('host can admit a waiting guest', async ({ browser }) => {
   const roomName = `waiting-${Date.now()}`;
@@ -30,6 +30,7 @@ test('host can admit a waiting guest', async ({ browser }) => {
   await joinRoom(guestPage);
   await expect(guestPage.locator('[data-testid="waiting-screen"]')).toBeVisible({ timeout: 20000 });
   await expect(guestPage.locator('text=Waiting for host')).toBeVisible();
+  await captureFeatureScreenshot(guestPage, 'waiting-room-guest');
 
   const admitButton = hostPage.getByRole('button', { name: 'Admit', exact: true });
   await expect(admitButton).toBeVisible({ timeout: 20000 });
@@ -42,6 +43,7 @@ test('host can admit a waiting guest', async ({ browser }) => {
   await expect(guestPage.locator('[data-testid="meeting-controls"]')).toBeVisible({
     timeout: 20000,
   });
+  await captureFeatureScreenshot(guestPage, 'waiting-room-admitted');
 
   await hostContext.close();
   await guestContext.close();
