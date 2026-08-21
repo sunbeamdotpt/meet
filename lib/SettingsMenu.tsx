@@ -11,6 +11,10 @@ import {
 import styles from '../styles/SettingsMenu.module.css';
 import { CameraSettings } from './CameraSettings';
 import { MicrophoneSettings } from './MicrophoneSettings';
+
+// Recording is enabled by default for this deployment.
+const RECORDING_ENABLED = true;
+
 /**
  * @alpha
  */
@@ -22,53 +26,65 @@ export interface SettingsMenuProps extends React.HTMLAttributes<HTMLDivElement> 
 export function SettingsMenu(props: SettingsMenuProps) {
   const layoutContext = useMaybeLayoutContext();
   const room = useRoomContext();
-  const recordingEndpoint = process.env.NEXT_PUBLIC_LK_RECORD_ENDPOINT;
+  const isRecording = useIsRecording();
+  const [egressId, setEgressId] = React.useState<string | null>(null);
+  const [processingRecRequest, setProcessingRecRequest] = React.useState(false);
+  const [recordingError, setRecordingError] = React.useState<string | null>(null);
 
   const settings = React.useMemo(() => {
     return {
       media: { camera: true, microphone: true, label: 'Media Devices', speaker: true },
-      recording: recordingEndpoint ? { label: 'Recording' } : undefined,
+      recording: RECORDING_ENABLED ? { label: 'Recording' } : undefined,
     };
   }, []);
 
   const tabs = React.useMemo(
-    () => Object.keys(settings).filter((t) => t !== undefined) as Array<keyof typeof settings>,
+    () => Object.keys(settings).filter((t) => settings[t as keyof typeof settings]) as Array<keyof typeof settings>,
     [settings],
   );
   const [activeTab, setActiveTab] = React.useState(tabs[0]);
 
-  const isRecording = useIsRecording();
-  const [initialRecStatus, setInitialRecStatus] = React.useState(isRecording);
-  const [processingRecRequest, setProcessingRecRequest] = React.useState(false);
-
   React.useEffect(() => {
-    if (initialRecStatus !== isRecording) {
+    if (!isRecording) {
+      setEgressId(null);
       setProcessingRecRequest(false);
     }
-  }, [isRecording, initialRecStatus]);
+  }, [isRecording]);
 
   const toggleRoomRecording = async () => {
-    if (!recordingEndpoint) {
-      throw TypeError('No recording endpoint specified');
-    }
+    setRecordingError(null);
     if (room.isE2EEEnabled) {
-      throw Error('Recording of encrypted meetings is currently not supported');
+      setRecordingError('Recording of encrypted meetings is currently not supported');
+      return;
     }
     setProcessingRecRequest(true);
-    setInitialRecStatus(isRecording);
-    let response: Response;
-    if (isRecording) {
-      response = await fetch(recordingEndpoint + `/stop?roomName=${room.name}`);
-    } else {
-      response = await fetch(recordingEndpoint + `/start?roomName=${room.name}`);
-    }
-    if (response.ok) {
-    } else {
-      console.error(
-        'Error handling recording request, check server logs:',
-        response.status,
-        response.statusText,
-      );
+    try {
+      if (isRecording && egressId) {
+        const response = await fetch(`/api/rooms/${encodeURIComponent(room.name)}/record/stop`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ egressId }),
+        });
+        if (!response.ok) {
+          const message = await response.text();
+          throw new Error(message);
+        }
+        setEgressId(null);
+      } else {
+        const response = await fetch(`/api/rooms/${encodeURIComponent(room.name)}/record/start`, {
+          method: 'POST',
+        });
+        if (!response.ok) {
+          const message = await response.text();
+          throw new Error(message);
+        }
+        const data = await response.json();
+        setEgressId(data.egressId);
+      }
+    } catch (error) {
+      console.error('Error handling recording request:', error);
+      setRecordingError(error instanceof Error ? error.message : 'Unknown error');
+    } finally {
       setProcessingRecRequest(false);
     }
   };
@@ -134,9 +150,16 @@ export function SettingsMenu(props: SettingsMenuProps) {
                   ? 'Meeting is currently being recorded'
                   : 'No active recordings for this meeting'}
               </p>
-              <button disabled={processingRecRequest} onClick={() => toggleRoomRecording()}>
+              <button
+                className="lk-button"
+                disabled={processingRecRequest}
+                onClick={() => toggleRoomRecording()}
+              >
                 {isRecording ? 'Stop' : 'Start'} Recording
               </button>
+              {recordingError && (
+                <p style={{ color: 'var(--lk-danger2)', marginTop: '0.5rem' }}>{recordingError}</p>
+              )}
             </section>
           </>
         )}
