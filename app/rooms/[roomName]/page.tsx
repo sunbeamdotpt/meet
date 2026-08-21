@@ -14,6 +14,7 @@ export default async function Page({
     hq?: string;
     codec?: string;
     singlePC?: string;
+    role?: string;
   }>;
 }) {
   const session = await auth();
@@ -29,6 +30,7 @@ export default async function Page({
       : 'vp9';
   const hq = _searchParams.hq === 'true' ? true : false;
   const singlePC = _searchParams.singlePC !== 'false';
+  const role = _searchParams.role === 'host' ? 'host' : 'guest';
 
   const userName = session.user.name ?? session.user.email ?? 'Guest';
 
@@ -40,6 +42,7 @@ export default async function Page({
       codec={codec}
       singlePeerConnection={singlePC}
       userName={userName}
+      role={role}
     />
   );
 }

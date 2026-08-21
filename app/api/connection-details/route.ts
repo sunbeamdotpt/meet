@@ -1,12 +1,10 @@
 import { randomString } from '@/lib/client-utils';
 import { getLiveKitURL } from '@/lib/getLiveKitURL';
-import { ConnectionDetails } from '@/lib/types';
+import { ConnectionDetails, MeetingRole } from '@/lib/types';
 import { auth } from '@/auth';
-import { AccessToken, AccessTokenOptions, VideoGrant } from 'livekit-server-sdk';
+import { createParticipantToken } from '@/lib/token';
 import { NextRequest, NextResponse } from 'next/server';
 
-const API_KEY = process.env.LIVEKIT_API_KEY;
-const API_SECRET = process.env.LIVEKIT_API_SECRET;
 const LIVEKIT_URL = process.env.LIVEKIT_URL;
 
 const COOKIE_KEY = 'random-participant-postfix';
@@ -20,6 +18,8 @@ export async function GET(request: NextRequest) {
 
     const roomName = request.nextUrl.searchParams.get('roomName');
     const region = request.nextUrl.searchParams.get('region');
+    const roleParam = request.nextUrl.searchParams.get('role');
+    const role: MeetingRole = roleParam === 'host' ? 'host' : 'guest';
 
     if (!LIVEKIT_URL) {
       throw new Error('LIVEKIT_URL is not defined');
@@ -45,7 +45,8 @@ export async function GET(request: NextRequest) {
       {
         identity: `${stableIdentity}__${randomParticipantPostfix}`,
         name: participantName,
-        metadata: JSON.stringify({ email: session.user.email }),
+        metadata: JSON.stringify({ email: session.user.email, role }),
+        role,
       },
       roomName,
     );
@@ -67,20 +68,6 @@ export async function GET(request: NextRequest) {
       return new NextResponse(error.message, { status: 500 });
     }
   }
-}
-
-function createParticipantToken(userInfo: AccessTokenOptions, roomName: string) {
-  const at = new AccessToken(API_KEY, API_SECRET, userInfo);
-  at.ttl = '5m';
-  const grant: VideoGrant = {
-    room: roomName,
-    roomJoin: true,
-    canPublish: true,
-    canPublishData: true,
-    canSubscribe: true,
-  };
-  at.addGrant(grant);
-  return at.toJwt();
 }
 
 function getCookieExpirationTime(): string {
