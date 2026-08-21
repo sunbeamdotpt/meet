@@ -1,6 +1,7 @@
 {
   "name": "bulwark-plugin-livekit-meet",
-  "version": "2026.8.2",
+  "version": "2026.8.3",
+  "author": "Sunbeam Studios",
   "private": true,
   "type": "module",
   "scripts": {

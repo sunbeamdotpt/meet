@@ -1,12 +1,32 @@
 {
   "id": "livekit-meet",
   "name": "LiveKit Meet",
-  "version": "2026.8.2",
-  "author": "Sunbeam",
+  "version": "2026.8.3",
+  "author": "Sunbeam Studios",
   "description": "Adds a LiveKit video meeting to calendar events. Meeting URLs are generated server-side by the livekit-meet app.",
   "type": "ui-extension",
   "permissions": ["calendar:read", "calendar:write", "ui:calendar-action", "http:post"],
   "entrypoint": "index.js",
   "minAppVersion": "1.7.0",
-  "apiPostPaths": ["/api/bulwark/rooms"]
+  "apiPostPaths": ["/api/bulwark/rooms"],
+  "settingsSchema": {
+    "buttonLabel": {
+      "type": "string",
+      "label": "Button label",
+      "description": "Label shown on the calendar event action button.",
+      "default": "Add LiveKit Meeting"
+    },
+    "autoSetLocation": {
+      "type": "boolean",
+      "label": "Set meeting link automatically",
+      "description": "When enabled, the generated meeting link is written directly into the event's meeting link field.",
+      "default": true
+    },
+    "apiPath": {
+      "type": "string",
+      "label": "Room API path",
+      "description": "Same-origin path the plugin POSTs to. This path must be proxied to the LiveKit Meet deployment.",
+      "default": "/api/bulwark/rooms"
+    }
+  }
 }

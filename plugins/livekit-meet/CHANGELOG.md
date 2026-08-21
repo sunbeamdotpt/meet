@@ -5,6 +5,18 @@ All notable changes to the Bulwark LiveKit Meet plugin will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Calendar Versioning](https://calver.org) (`YYYY.0M.PATCH`).
 
+## [v2026.08.3] - 2026-08-21
+
+### Added
+
+- Plugin settings schema with configurable `buttonLabel`, `autoSetLocation`, and `apiPath` values.
+- Author attribution changed to **Sunbeam Studios**.
+
+### Fixed
+
+- Read `eventData.start`/`eventData.end` from the Bulwark `calendar-event-actions` slot contract instead of the non-existent `startTime`/`endTime` keys.
+- Unwrap the host's `{ ok, status, data }` response envelope when reading the created meeting URL.
+
 ## [v2026.08.2] - 2026-08-21
 
 ### Added
