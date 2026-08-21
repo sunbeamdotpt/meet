@@ -1,0 +1,12 @@
+{
+  "id": "livekit-meet",
+  "name": "LiveKit Meet",
+  "version": "1.0.0",
+  "author": "Sunbeam",
+  "description": "Adds a LiveKit video meeting to calendar events. Meeting URLs are generated server-side by the livekit-meet app.",
+  "type": "ui-extension",
+  "permissions": ["calendar:read", "calendar:write", "ui:calendar-action", "http:post"],
+  "entrypoint": "index.js",
+  "minAppVersion": "1.7.0",
+  "apiPostPaths": ["/api/bulwark/rooms"]
+}
