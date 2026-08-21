@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Calendar Versioning](https://calver.org) (`YYYY.0M.PATCH`).
 
+## [v2026.08.2] - 2026-08-21
+
+### Added
+
+- `pnpm build:zip` script in `plugins/livekit-meet/` to produce a Bulwark-compatible plugin ZIP (`manifest.json` + `index.js` at the root).
+- Plugin version injection from the release tag into `manifest.json` at zip time.
+- GitHub Actions release job that builds the plugin and attaches `livekit-meet-plugin-{tag}.zip` to each `v*` release.
+- Plugin-specific `CHANGELOG.md` in `plugins/livekit-meet/`.
+
+### Changed
+
+- CI `build-plugin` job now verifies the plugin ZIP contains `manifest.json` and `index.js` at the root.
+
 ## [v2026.08.1] - 2026-08-21
 
 ### Added
