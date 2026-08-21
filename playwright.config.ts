@@ -14,6 +14,7 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:3000',
     trace: 'on-first-retry',
+    screenshot: 'only-on-failure',
     permissions: ['camera', 'microphone'],
   },
   projects: [
@@ -32,11 +33,13 @@ export default defineConfig({
       },
     },
   ],
-  webServer: {
-    command: 'pnpm dev',
-    url: 'http://localhost:3000',
-    reuseExistingServer: !process.env.CI,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  },
+  webServer: process.env.CI
+    ? undefined
+    : {
+        command: 'pnpm dev',
+        url: 'http://localhost:3000',
+        reuseExistingServer: true,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
 });

@@ -3,7 +3,12 @@ import { signInWithTestAccount } from './helpers';
 
 test('E2EE passphrase is derived and returned by connection details', async ({ page }) => {
   const roomName = `e2ee-${Date.now()}`;
-  await signInWithTestAccount(page, { name: 'E2EE Host', email: 'e2ee-host@example.com', roomName, role: 'host' });
+  await signInWithTestAccount(page, {
+    name: 'E2EE Host',
+    email: 'e2ee-host@example.com',
+    roomName,
+    role: 'host',
+  });
 
   const details = await page.evaluate(async (name) => {
     const url = new URL('/api/connection-details', window.location.origin);
