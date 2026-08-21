@@ -10,7 +10,12 @@ export default async function Page() {
         <div className="header">
           <h1>Video Calls</h1>
           <p>Signed in as {session.user.email ?? session.user.name ?? 'Unknown'}</p>
-          <p>Join a meeting from your calendar invitation.</p>
+          <p>Join a meeting from your calendar invitation, or view your upcoming meetings.</p>
+        </div>
+        <div className={styles.tabContent}>
+          <a className="lk-button" href="/meetings" style={{ width: '100%' }}>
+            Upcoming meetings
+          </a>
         </div>
       </main>
     );
