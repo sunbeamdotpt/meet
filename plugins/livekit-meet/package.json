@@ -1,13 +1,16 @@
 {
   "name": "bulwark-plugin-livekit-meet",
-  "version": "1.0.0",
+  "version": "2026.8.1",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "esbuild src/index.js --bundle --format=cjs --platform=neutral --charset=utf8 --outfile=dist/index.js --external:react --external:react-dom --external:react-dom/client --external:react/jsx-runtime --external:@plugin-host",
-    "dev": "npm run build -- --watch"
+    "build:zip": "pnpm build && pnpm zip",
+    "dev": "npm run build -- --watch",
+    "zip": "node scripts/zip.js"
   },
   "devDependencies": {
+    "adm-zip": "^0.6.0",
     "esbuild": "^0.24.0"
   }
 }

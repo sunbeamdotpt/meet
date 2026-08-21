@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      adm-zip:
+        specifier: ^0.6.0
+        version: 0.6.0
       esbuild:
         specifier: ^0.24.0
         version: 0.24.2
@@ -164,6 +167,10 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  adm-zip@0.6.0:
+    resolution: {integrity: sha512-XleryMhbuksdKtofnWZ9Sk+4CUTbms4Mb/EU32SZwToAyZ5RgVos/ki8n+yr0LWHOGKuakbXTuuYNHLQjhddgg==}
+    engines: {node: '>=14.0'}
+
   esbuild@0.24.2:
     resolution: {integrity: sha512-+9egpBW8I3CD5XPe0n6BfT5fxLzxrlDzqydF3aviG+9ni1lDC/OvMHcxqEFV0+LANZG5R1bFMWfUrjVsdwxJvA==}
     engines: {node: '>=18'}
@@ -245,6 +252,8 @@ snapshots:
 
   '@esbuild/win32-x64@0.24.2':
     optional: true
+
+  adm-zip@0.6.0: {}
 
   esbuild@0.24.2:
     optionalDependencies:
