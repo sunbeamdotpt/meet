@@ -1,42 +1,43 @@
-<a href="https://livekit.io/">
-  <img src="./.github/assets/livekit-mark.png" alt="LiveKit logo" width="100" height="100">
-</a>
+# Video Calls
 
-# LiveKit Meet
+A LiveKit-based video conferencing app for calendar events, forked from [livekit-examples/meet](https://github.com/livekit-examples/meet).
 
-<p>
-  <a href="https://meet.livekit.io"><strong>Try the demo</strong></a>
-  •
-  <a href="https://github.com/livekit/components-js">LiveKit Components</a>
-  •
-  <a href="https://docs.livekit.io/">LiveKit Docs</a>
-  •
-  <a href="https://livekit.io/cloud">LiveKit Cloud</a>
-  •
-  <a href="https://blog.livekit.io/">Blog</a>
-</p>
+## Requirements
 
-<br>
+- Node.js 18+
+- pnpm
+- A LiveKit project (Cloud or self-hosted)
+- An OIDC provider (e.g. Zitadel, Keycloak, Okta)
 
-LiveKit Meet is an open source video conferencing app built on [LiveKit Components](https://github.com/livekit/components-js), [LiveKit Cloud](https://cloud.livekit.io/), and Next.js. It's been completely redesigned from the ground up using our new components library.
+## Setup
 
-![LiveKit Meet screenshot](./.github/assets/livekit-meet.jpg)
+1. Install dependencies:
+   ```bash
+   pnpm install
+   ```
 
-## Tech Stack
+2. Copy `.env.example` to `.env.local` and fill in the values:
+   ```bash
+   cp .env.example .env.local
+   ```
 
-- This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
-- App is built with [@livekit/components-react](https://github.com/livekit/components-js/) library.
+3. Start the development server:
+   ```bash
+   pnpm dev
+   ```
 
-## Demo
+## Usage
 
-Give it a try at https://meet.livekit.io.
+Users authenticate via OIDC. Calendar events link directly to `/rooms/{roomName}`; authenticated users can join the room from that URL.
 
-## Dev Setup
+## Environment Variables
 
-Steps to get a local dev setup up and running:
-
-1. Run `pnpm install` to install all dependencies.
-2. Copy `.env.example` in the project root and rename it to `.env.local`.
-3. Update the missing environment variables in the newly created `.env.local` file.
-4. Run `pnpm dev` to start the development server and visit [http://localhost:3000](http://localhost:3000) to see the result.
-5. Start development 🎉
+| Variable | Description |
+|---|---|
+| `LIVEKIT_API_KEY` | LiveKit API key |
+| `LIVEKIT_API_SECRET` | LiveKit API secret |
+| `LIVEKIT_URL` | LiveKit server URL, e.g. `wss://my-project.livekit.cloud` |
+| `OIDC_ISSUER` | OIDC issuer URL |
+| `OIDC_CLIENT_ID` | OIDC client ID |
+| `OIDC_CLIENT_SECRET` | OIDC client secret |
+| `AUTH_SECRET` | Random secret for NextAuth session cookies |
