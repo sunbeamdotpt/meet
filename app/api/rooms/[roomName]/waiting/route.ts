@@ -1,5 +1,5 @@
 import { auth } from '@/auth';
-import { getRoomServiceClient } from '@/lib/livekit';
+import { getWaitingGuests } from '@/lib/waitingRoom';
 import { NextResponse } from 'next/server';
 
 interface RouteParams {
@@ -14,15 +14,8 @@ export async function GET(_request: Request, { params }: RouteParams) {
     }
 
     const { roomName } = await params;
-    const svc = getRoomServiceClient();
-    const participants = await svc.listParticipants(roomName).catch((error) => {
-      // If the room does not exist yet, there are no participants.
-      if (error instanceof Error && /not found/i.test(error.message)) {
-        return [];
-      }
-      throw error;
-    });
-    return NextResponse.json(participants);
+    const guests = getWaitingGuests(roomName);
+    return NextResponse.json({ guests });
   } catch (error) {
     if (error instanceof Error) {
       return new NextResponse(error.message, { status: 500 });

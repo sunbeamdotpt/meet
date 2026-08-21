@@ -1,5 +1,5 @@
 import { auth } from '@/auth';
-import { getRoomServiceClient } from '@/lib/livekit';
+import { isAdmitted } from '@/lib/waitingRoom';
 import { NextResponse } from 'next/server';
 
 interface RouteParams {
@@ -9,20 +9,13 @@ interface RouteParams {
 export async function GET(_request: Request, { params }: RouteParams) {
   try {
     const session = await auth();
-    if (!session?.user) {
+    if (!session?.user?.email) {
       return new NextResponse('Unauthorized', { status: 401 });
     }
 
     const { roomName } = await params;
-    const svc = getRoomServiceClient();
-    const participants = await svc.listParticipants(roomName).catch((error) => {
-      // If the room does not exist yet, there are no participants.
-      if (error instanceof Error && /not found/i.test(error.message)) {
-        return [];
-      }
-      throw error;
-    });
-    return NextResponse.json(participants);
+    const admitted = isAdmitted(roomName, session.user.email);
+    return NextResponse.json({ admitted });
   } catch (error) {
     if (error instanceof Error) {
       return new NextResponse(error.message, { status: 500 });

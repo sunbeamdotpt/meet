@@ -65,3 +65,30 @@ h2 a {
 h2 a {
   text-decoration: none;
 }
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes lk-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--lk-danger2);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(255, 99, 82, 0);
+  }
+}
+
+@keyframes reaction-float {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-20vh) scale(1.5);
+  }
+}
