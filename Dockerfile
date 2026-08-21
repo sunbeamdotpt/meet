@@ -9,6 +9,8 @@ RUN pnpm install --frozen-lockfile
 
 FROM base AS builder
 WORKDIR /app
+ARG NEXT_PUBLIC_SHOW_SETTINGS_MENU
+ENV NEXT_PUBLIC_SHOW_SETTINGS_MENU=${NEXT_PUBLIC_SHOW_SETTINGS_MENU}
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN pnpm build

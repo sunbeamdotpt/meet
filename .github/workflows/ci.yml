@@ -101,6 +101,7 @@ jobs:
           push: false
           load: true
           tags: livekit-meet:ci
+          build-args: NEXT_PUBLIC_SHOW_SETTINGS_MENU=true
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
