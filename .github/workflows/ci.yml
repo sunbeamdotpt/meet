@@ -14,6 +14,22 @@ env:
 jobs:
   lint-and-unit:
     runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: livekit_meet
+          POSTGRES_PASSWORD: livekit_meet
+          POSTGRES_DB: livekit_meet
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    env:
+      DATABASE_URL: postgres://livekit_meet:livekit_meet@localhost:5432/livekit_meet
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,6 +53,35 @@ jobs:
 
       - name: Run unit tests
         run: pnpm test
+
+  build-plugin:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pnpm
+        run: npm install -g pnpm@10.18.2
+
+      - name: Install plugin dependencies
+        working-directory: ./plugins/livekit-meet
+        run: pnpm install --frozen-lockfile
+
+      - name: Build plugin
+        working-directory: ./plugins/livekit-meet
+        run: pnpm build
+
+      - name: Upload plugin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: livekit-meet-plugin
+          path: plugins/livekit-meet/dist/
+          retention-days: 7
 
   build-container:
     runs-on: ubuntu-24.04

@@ -7,10 +7,27 @@ services:
     ports:
       - '7880:7880'
 
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: livekit_meet
+      POSTGRES_PASSWORD: livekit_meet
+      POSTGRES_DB: livekit_meet
+    ports:
+      - '5432:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U livekit_meet -d livekit_meet']
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
   app:
     image: livekit-meet:ci
     depends_on:
-      - livekit
+      livekit:
+        condition: service_started
+      postgres:
+        condition: service_healthy
     environment:
       LIVEKIT_URL: 'ws://livekit:7880'
       LIVEKIT_API_KEY: 'key'
@@ -18,5 +35,7 @@ services:
       ALLOW_TEST_AUTH: 'true'
       E2EE_SECRET: 'ci-e2ee-secret-change-me'
       AUTH_SECRET: 'ci-auth-secret-change-me'
+      DATABASE_URL: 'postgres://livekit_meet:livekit_meet@postgres:5432/livekit_meet'
+      MEET_BASE_URL: 'http://localhost:3000'
     ports:
       - '3000:3000'
