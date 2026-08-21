@@ -6,10 +6,11 @@ const instances: Array<{
   apiSecret: string | undefined;
   userInfo: Record<string, unknown>;
   grant?: Record<string, unknown>;
+  ttl: string;
 }> = [];
 
 vi.mock('livekit-server-sdk', () => ({
-  AccessToken: vi.fn().mockImplementation(function (apiKey, apiSecret, userInfo) {
+  AccessToken: vi.fn().mockImplementation(function (this: Record<string, unknown>, apiKey, apiSecret, userInfo) {
     const instance = {
       apiKey,
       apiSecret,
