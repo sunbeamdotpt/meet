@@ -25,6 +25,7 @@ export type ConnectionDetails = {
   roomName: string;
   participantName: string;
   participantToken: string;
+  e2eePassphrase: string;
 };
 
 export type MeetingRole = 'host' | 'guest';

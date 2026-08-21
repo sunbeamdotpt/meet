@@ -1,10 +1,9 @@
-import React from 'react';
-import { ExternalE2EEKeyProvider } from 'livekit-client';
 import { decodePassphrase } from './client-utils';
 
-export function useSetupE2EE() {
+export function useSetupE2EE(serverPassphrase?: string) {
   const e2eePassphrase =
-    typeof window !== 'undefined' ? decodePassphrase(location.hash.substring(1)) : undefined;
+    serverPassphrase ||
+    (typeof window !== 'undefined' ? decodePassphrase(location.hash.substring(1)) : undefined);
 
   const worker: Worker | undefined =
     typeof window !== 'undefined' && e2eePassphrase
