@@ -32,11 +32,11 @@ See [OIDC Setup](./oidc.md) for details.
 
 The plugin exposes three per-user settings in Bulwark's plugin preferences:
 
-| Setting | Type | Default | Description |
-| --- | --- | --- | --- |
-| `buttonLabel` | string | `Add LiveKit Meeting` | Label shown on the calendar event action button. |
-| `autoSetLocation` | boolean | `true` | When enabled, the generated meeting link is written directly into the event's meeting link field. |
-| `apiPath` | string | `/api/bulwark/rooms` | Same-origin path the plugin POSTs to. This path must be proxied to the LiveKit Meet deployment. |
+| Setting           | Type    | Default               | Description                                                                                       |
+| ----------------- | ------- | --------------------- | ------------------------------------------------------------------------------------------------- |
+| `buttonLabel`     | string  | `Add LiveKit Meeting` | Label shown on the calendar event action button.                                                  |
+| `autoSetLocation` | boolean | `true`                | When enabled, the generated meeting link is written directly into the event's meeting link field. |
+| `apiPath`         | string  | `/api/bulwark/rooms`  | Same-origin path the plugin POSTs to. This path must be proxied to the LiveKit Meet deployment.   |
 
 ## Webhooks
 
