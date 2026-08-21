@@ -15,7 +15,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const { roomName } = await params;
     const body = await request.json().catch(() => ({}));
-    const name = typeof body?.name === 'string' ? body.name : session.user.name ?? session.user.email;
+    const name =
+      typeof body?.name === 'string' ? body.name : (session.user.name ?? session.user.email);
     const identity = session.user.email;
 
     const guest = knock(roomName, identity, name, session.user.email);

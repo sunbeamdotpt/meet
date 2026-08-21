@@ -29,7 +29,8 @@ export function MeetingControls(props: MeetingControlsProps) {
   const { send: sendRaiseHand } = useDataChannel('raise-hand');
   const [handRaised, setHandRaised] = React.useState(false);
 
-  const localName = props.userName || room.localParticipant.name || room.localParticipant.identity || 'You';
+  const localName =
+    props.userName || room.localParticipant.name || room.localParticipant.identity || 'You';
 
   const sendReactionMessage = (emoji: string) => {
     props.onReaction?.(emoji);

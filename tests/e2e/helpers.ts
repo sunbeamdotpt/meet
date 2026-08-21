@@ -9,7 +9,9 @@ export async function signInWithTestAccount(
   await page.locator('input[name="name"]').fill(options.name);
   await page.locator('input[name="email"]').fill(options.email);
   await page.locator('button[type="submit"]').click();
-  await page.waitForURL(new RegExp(`^.*${callbackUrl.replace(/\?/g, '\\?')}.*`), { timeout: 10000 });
+  await page.waitForURL(new RegExp(`^.*${callbackUrl.replace(/\?/g, '\\?')}.*`), {
+    timeout: 10000,
+  });
 }
 
 export async function joinRoom(page: Page) {

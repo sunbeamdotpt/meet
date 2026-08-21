@@ -42,7 +42,8 @@ const testProvider =
         },
         authorize(credentials) {
           const name = typeof credentials?.name === 'string' ? credentials.name : 'Test User';
-          const email = typeof credentials?.email === 'string' ? credentials.email : 'test@example.com';
+          const email =
+            typeof credentials?.email === 'string' ? credentials.email : 'test@example.com';
           return { id: email, name, email };
         },
       })
@@ -57,7 +58,10 @@ if (testProvider) {
 }
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  providers: providers.length > 0 ? providers : ([{ id: 'none', name: 'None', type: 'credentials', authorize: () => null }] as any),
+  providers:
+    providers.length > 0
+      ? providers
+      : ([{ id: 'none', name: 'None', type: 'credentials', authorize: () => null }] as any),
   callbacks: {
     async session({ session, token }) {
       if (token.sub) {

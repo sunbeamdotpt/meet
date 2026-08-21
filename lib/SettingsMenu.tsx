@@ -39,7 +39,10 @@ export function SettingsMenu(props: SettingsMenuProps) {
   }, []);
 
   const tabs = React.useMemo(
-    () => Object.keys(settings).filter((t) => settings[t as keyof typeof settings]) as Array<keyof typeof settings>,
+    () =>
+      Object.keys(settings).filter((t) => settings[t as keyof typeof settings]) as Array<
+        keyof typeof settings
+      >,
     [settings],
   );
   const [activeTab, setActiveTab] = React.useState(tabs[0]);

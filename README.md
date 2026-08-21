@@ -13,11 +13,13 @@ A LiveKit-based video conferencing app for calendar events, forked from [livekit
 ## Setup
 
 1. Install dependencies:
+
    ```bash
    pnpm install
    ```
 
 2. Copy `.env.example` to `.env.local` and fill in the values:
+
    ```bash
    cp .env.example .env.local
    ```
@@ -59,17 +61,17 @@ Configure your LiveKit project to send webhooks to `/api/webhooks/livekit`. The 
 
 ## Environment Variables
 
-| Variable | Description |
-|---|---|
-| `LIVEKIT_API_KEY` | LiveKit API key |
-| `LIVEKIT_API_SECRET` | LiveKit API secret |
-| `LIVEKIT_URL` | LiveKit server URL, e.g. `wss://my-project.livekit.cloud` |
-| `OIDC_ISSUER` | OIDC issuer URL |
-| `OIDC_CLIENT_ID` | OIDC client ID |
-| `OIDC_CLIENT_SECRET` | OIDC client secret |
-| `AUTH_SECRET` | Random secret for NextAuth session cookies |
-| `S3_KEY_ID` | S3 access key ID for egress recordings |
-| `S3_KEY_SECRET` | S3 secret access key for egress recordings |
-| `S3_ENDPOINT` | S3 endpoint URL (omit for AWS) |
-| `S3_BUCKET` | S3 bucket for egress recordings |
-| `S3_REGION` | S3 region for egress recordings |
+| Variable             | Description                                               |
+| -------------------- | --------------------------------------------------------- |
+| `LIVEKIT_API_KEY`    | LiveKit API key                                           |
+| `LIVEKIT_API_SECRET` | LiveKit API secret                                        |
+| `LIVEKIT_URL`        | LiveKit server URL, e.g. `wss://my-project.livekit.cloud` |
+| `OIDC_ISSUER`        | OIDC issuer URL                                           |
+| `OIDC_CLIENT_ID`     | OIDC client ID                                            |
+| `OIDC_CLIENT_SECRET` | OIDC client secret                                        |
+| `AUTH_SECRET`        | Random secret for NextAuth session cookies                |
+| `S3_KEY_ID`          | S3 access key ID for egress recordings                    |
+| `S3_KEY_SECRET`      | S3 secret access key for egress recordings                |
+| `S3_ENDPOINT`        | S3 endpoint URL (omit for AWS)                            |
+| `S3_BUCKET`          | S3 bucket for egress recordings                           |
+| `S3_REGION`          | S3 region for egress recordings                           |

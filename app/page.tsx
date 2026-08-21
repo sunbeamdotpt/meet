@@ -29,7 +29,11 @@ export default async function Page() {
           await signIn('oidc');
         }}
       >
-        <button style={{ paddingInline: '1.25rem', width: '100%' }} className="lk-button" type="submit">
+        <button
+          style={{ paddingInline: '1.25rem', width: '100%' }}
+          className="lk-button"
+          type="submit"
+        >
           Sign in
         </button>
       </form>

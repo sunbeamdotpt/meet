@@ -45,9 +45,10 @@ export async function GET(request: NextRequest) {
 
     const admitted = role === 'guest' ? isAdmitted(roomName, session.user.email ?? '') : true;
     const isHost = role === 'host';
-    const permissions = admitted && !isHost
-      ? { canPublish: true, canPublishData: true, canSubscribe: true, roomAdmin: false }
-      : undefined;
+    const permissions =
+      admitted && !isHost
+        ? { canPublish: true, canPublishData: true, canSubscribe: true, roomAdmin: false }
+        : undefined;
 
     const participantToken = await createParticipantToken(
       {

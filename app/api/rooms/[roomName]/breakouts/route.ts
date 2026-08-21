@@ -155,7 +155,10 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    await svc.updateRoomMetadata(roomName, JSON.stringify({ [BREAKOUT_METADATA_KEY]: { active: false } }));
+    await svc.updateRoomMetadata(
+      roomName,
+      JSON.stringify({ [BREAKOUT_METADATA_KEY]: { active: false } }),
+    );
 
     return NextResponse.json({ success: true });
   } catch (error) {

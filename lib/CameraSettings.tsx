@@ -114,7 +114,6 @@ export function CameraSettings() {
               Blur
             </span>
           </button>
-
         </div>
       </div>
     </div>

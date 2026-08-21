@@ -31,11 +31,7 @@ import {
 import { useRouter } from 'next/navigation';
 import { useSetupE2EE } from '@/lib/useSetupE2EE';
 import { useLowCPUOptimizer } from '@/lib/usePerfomanceOptimiser';
-import {
-  MeetingControls,
-  ReactionOverlay,
-  RaisedHandsOverlay,
-} from '@/lib/MeetingControls';
+import { MeetingControls, ReactionOverlay, RaisedHandsOverlay } from '@/lib/MeetingControls';
 import { BreakoutControls } from '@/lib/BreakoutControls';
 
 const CONN_DETAILS_ENDPOINT =
@@ -409,19 +405,16 @@ function RoomLayer(props: { role: MeetingRole; userName: string }) {
     }, 2000);
   }, []);
 
-  const updateRaisedHand = React.useCallback(
-    (raised: boolean, identity: string, name: string) => {
-      if (raised) {
-        setRaisedHands((prev) => {
-          const without = prev.filter((h) => h.identity !== identity);
-          return [...without, { identity, name, raisedAt: Date.now() }];
-        });
-      } else {
-        setRaisedHands((prev) => prev.filter((h) => h.identity !== identity));
-      }
-    },
-    [],
-  );
+  const updateRaisedHand = React.useCallback((raised: boolean, identity: string, name: string) => {
+    if (raised) {
+      setRaisedHands((prev) => {
+        const without = prev.filter((h) => h.identity !== identity);
+        return [...without, { identity, name, raisedAt: Date.now() }];
+      });
+    } else {
+      setRaisedHands((prev) => prev.filter((h) => h.identity !== identity));
+    }
+  }, []);
 
   const { message: reactionMessage } = useDataChannel('reaction');
   React.useEffect(() => {
@@ -460,14 +453,24 @@ function RoomLayer(props: { role: MeetingRole; userName: string }) {
     let cancelled = false;
     fetch(`/api/rooms/${encodeURIComponent(room.name)}/breakouts`)
       .then((res) => (res.ok ? res.json() : null))
-      .then((data: { state: { active: boolean; assignments?: Record<string, string>; rooms?: Array<{ name: string; label: string }> } | null } | null) => {
-        if (cancelled || !data?.state?.active) return;
-        const assignment = data.state.assignments?.[room.localParticipant.identity];
-        if (assignment) {
-          const label = data.state.rooms?.find((r) => r.name === assignment)?.label ?? 'Breakout';
-          setBreakoutNotice({ type: 'assignment', roomName: assignment, label });
-        }
-      })
+      .then(
+        (
+          data: {
+            state: {
+              active: boolean;
+              assignments?: Record<string, string>;
+              rooms?: Array<{ name: string; label: string }>;
+            } | null;
+          } | null,
+        ) => {
+          if (cancelled || !data?.state?.active) return;
+          const assignment = data.state.assignments?.[room.localParticipant.identity];
+          if (assignment) {
+            const label = data.state.rooms?.find((r) => r.name === assignment)?.label ?? 'Breakout';
+            setBreakoutNotice({ type: 'assignment', roomName: assignment, label });
+          }
+        },
+      )
       .catch((e) => console.error('Failed to fetch breakout state:', e));
     return () => {
       cancelled = true;
@@ -486,7 +489,11 @@ function RoomLayer(props: { role: MeetingRole; userName: string }) {
         label?: string;
       };
       if (data.type === 'breakout-assignment' && data.roomName) {
-        setBreakoutNotice({ type: 'assignment', roomName: data.roomName, label: data.label ?? 'Breakout' });
+        setBreakoutNotice({
+          type: 'assignment',
+          roomName: data.roomName,
+          label: data.label ?? 'Breakout',
+        });
       } else if (data.type === 'breakout-close') {
         setBreakoutNotice({ type: 'close' });
       }

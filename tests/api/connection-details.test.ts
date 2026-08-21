@@ -41,9 +41,7 @@ describe('GET /api/connection-details', () => {
 
   it('defaults to guest role when role is omitted', async () => {
     const { createParticipantToken } = await import('@/lib/token');
-    const request = new NextRequest(
-      'http://localhost/api/connection-details?roomName=room-1',
-    );
+    const request = new NextRequest('http://localhost/api/connection-details?roomName=room-1');
     await GET(request);
 
     expect(createParticipantToken).toHaveBeenCalledWith(
@@ -56,9 +54,7 @@ describe('GET /api/connection-details', () => {
     const { auth } = await import('@/auth');
     vi.mocked(auth).mockResolvedValueOnce(null as never);
 
-    const request = new NextRequest(
-      'http://localhost/api/connection-details?roomName=room-1',
-    );
+    const request = new NextRequest('http://localhost/api/connection-details?roomName=room-1');
     const response = await GET(request);
     expect(response.status).toBe(401);
   });

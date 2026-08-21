@@ -30,7 +30,12 @@ function getRoom(roomName: string): Map<string, WaitingGuest> {
   return room;
 }
 
-export function knock(roomName: string, identity: string, name: string, email: string): WaitingGuest {
+export function knock(
+  roomName: string,
+  identity: string,
+  name: string,
+  email: string,
+): WaitingGuest {
   const room = getRoom(roomName);
   const guest: WaitingGuest = {
     identity,

@@ -185,7 +185,11 @@ export function BreakoutControls() {
         }}
       >
         <h4 style={{ margin: 0 }}>Breakout rooms</h4>
-        <button data-testid="breakout-toggle" className="lk-button" onClick={() => setIsOpen((v) => !v)}>
+        <button
+          data-testid="breakout-toggle"
+          className="lk-button"
+          onClick={() => setIsOpen((v) => !v)}
+        >
           {isOpen ? 'Close' : activeState ? 'Manage' : 'Create'}
         </button>
       </div>
@@ -257,7 +261,9 @@ export function BreakoutControls() {
                       if (i !== idx) {
                         return {
                           ...roomInput,
-                          participants: roomInput.participants.filter((id) => !selected.includes(id)),
+                          participants: roomInput.participants.filter(
+                            (id) => !selected.includes(id),
+                          ),
                         };
                       }
                       return { ...roomInput, participants: selected };
