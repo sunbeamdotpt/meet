@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Calendar Versioning](https://calver.org) (`YYYY.0M.PATCH`).
 
+## [v2026.08.3] - 2026-08-21
+
+### Fixed
+
+- OIDC sign-in with Hydra by adding `checks: ['pkce', 'state']` to the OIDC provider. NextAuth v5 only sends the `state` parameter when explicitly requested, and Hydra rejects callbacks without it.
+
 ## [v2026.08.2] - 2026-08-21
 
 ### Added

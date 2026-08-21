@@ -16,6 +16,9 @@ const oidcProvider: OIDCConfig<OIDCProfile> = {
   issuer: process.env.OIDC_ISSUER,
   clientId: process.env.OIDC_CLIENT_ID,
   clientSecret: process.env.OIDC_CLIENT_SECRET,
+  // Hydra requires a state parameter; NextAuth v5 only sends it when
+  // 'state' is included in checks (default is ['pkce']).
+  checks: ['pkce', 'state'],
   authorization: {
     params: {
       scope: 'openid email profile',
