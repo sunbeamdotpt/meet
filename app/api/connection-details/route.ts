@@ -3,6 +3,8 @@ import { getLiveKitURL } from '@/lib/getLiveKitURL';
 import { ConnectionDetails, MeetingRole } from '@/lib/types';
 import { auth } from '@/auth';
 import { createParticipantToken } from '@/lib/token';
+import { deriveE2EEPassphrase } from '@/lib/e2ee';
+import { isAdmitted } from '@/lib/waitingRoom';
 import { NextRequest, NextResponse } from 'next/server';
 
 const LIVEKIT_URL = process.env.LIVEKIT_URL;
@@ -41,12 +43,19 @@ export async function GET(request: NextRequest) {
       randomParticipantPostfix = randomString(4);
     }
 
+    const admitted = role === 'guest' ? isAdmitted(roomName, session.user.email ?? '') : true;
+    const isHost = role === 'host';
+    const permissions = admitted && !isHost
+      ? { canPublish: true, canPublishData: true, canSubscribe: true, roomAdmin: false }
+      : undefined;
+
     const participantToken = await createParticipantToken(
       {
         identity: `${stableIdentity}__${randomParticipantPostfix}`,
         name: participantName,
         metadata: JSON.stringify({ email: session.user.email, role }),
         role,
+        permissions,
       },
       roomName,
     );
@@ -56,6 +65,7 @@ export async function GET(request: NextRequest) {
       roomName: roomName,
       participantToken: participantToken,
       participantName: participantName,
+      e2eePassphrase: deriveE2EEPassphrase(roomName),
     };
     return new NextResponse(JSON.stringify(data), {
       headers: {
@@ -67,6 +77,7 @@ export async function GET(request: NextRequest) {
     if (error instanceof Error) {
       return new NextResponse(error.message, { status: 500 });
     }
+    return new NextResponse('Internal Server Error', { status: 500 });
   }
 }
 

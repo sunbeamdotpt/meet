@@ -4,8 +4,16 @@ import { MeetingRole } from './types';
 const API_KEY = process.env.LIVEKIT_API_KEY;
 const API_SECRET = process.env.LIVEKIT_API_SECRET;
 
+export interface TokenPermissions {
+  canPublish?: boolean;
+  canPublishData?: boolean;
+  canSubscribe?: boolean;
+  roomAdmin?: boolean;
+}
+
 export interface TokenUserInfo extends AccessTokenOptions {
   role: MeetingRole;
+  permissions?: TokenPermissions;
 }
 
 export async function createParticipantToken(
@@ -19,10 +27,10 @@ export async function createParticipantToken(
   const grant: VideoGrant = {
     room: roomName,
     roomJoin: true,
-    canPublish: isHost,
-    canPublishData: isHost,
-    canSubscribe: isHost,
-    roomAdmin: isHost,
+    canPublish: userInfo.permissions?.canPublish ?? isHost,
+    canPublishData: userInfo.permissions?.canPublishData ?? isHost,
+    canSubscribe: userInfo.permissions?.canSubscribe ?? isHost,
+    roomAdmin: userInfo.permissions?.roomAdmin ?? isHost,
   };
   at.addGrant(grant);
   return await at.toJwt();
