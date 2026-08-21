@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Calendar Versioning](https://calver.org) (`YYYY.0M.PATCH`).
 
+## [v2026.08.4] - 2026-08-21
+
+### Fixed
+
+- OIDC token endpoint authentication by setting `client.token_endpoint_auth_method` to `client_secret_post`, matching the SSO gateway client's registered method. Without this, NextAuth v5 falls back to `client_secret_basic` and Hydra rejects the token exchange with `invalid_client`.
+
 ## [v2026.08.3] - 2026-08-21
 
 ### Fixed

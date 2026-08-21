@@ -19,6 +19,12 @@ const oidcProvider: OIDCConfig<OIDCProfile> = {
   // Hydra requires a state parameter; NextAuth v5 only sends it when
   // 'state' is included in checks (default is ['pkce']).
   checks: ['pkce', 'state'],
+  // The SSO gateway client is registered with token_endpoint_auth_method
+  // 'client_secret_post'; force the same method so the token request does
+  // not fall back to client_secret_basic.
+  client: {
+    token_endpoint_auth_method: 'client_secret_post',
+  },
   authorization: {
     params: {
       scope: 'openid email profile',
