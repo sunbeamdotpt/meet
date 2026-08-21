@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-name: Release Container
+name: Release
 
 on:
   push:
@@ -8,12 +8,12 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Image tag to build and push (e.g. v2026.08.0)'
+        description: 'Release tag to build (e.g. v2026.08.0)'
         required: true
         default: 'v2026.08.0'
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 env:
@@ -21,12 +21,11 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build:
+  resolve-tag:
     runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.tag.outputs.value }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Resolve release tag
         id: tag
         run: |
@@ -36,10 +35,17 @@ jobs:
             echo "value=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
           fi
 
+  container:
+    needs: resolve-tag
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Compute version tags
         id: version_tags
         run: |
-          TAG="${{ steps.tag.outputs.value }}"
+          TAG="${{ needs.resolve-tag.outputs.tag }}"
           VERSION="${TAG#v}"
           MAJOR="${VERSION%%.*}"
           MINOR_REST="${VERSION#*.}"
@@ -87,10 +93,60 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            VERSION=${{ steps.tag.outputs.value }}
+            NEXT_PUBLIC_SHOW_SETTINGS_MENU=true
+            VERSION=${{ needs.resolve-tag.outputs.tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Summarize image
         run: |
-          echo "Pushed: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}"
+          echo "Pushed: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.resolve-tag.outputs.tag }}"
+
+  plugin:
+    needs: resolve-tag
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: ./plugins/livekit-meet
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pnpm
+        run: npm install -g pnpm@10.18.2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build plugin bundle and zip
+        run: pnpm build:zip ${{ needs.resolve-tag.outputs.tag }}
+
+      - name: Upload plugin zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: livekit-meet-plugin-${{ needs.resolve-tag.outputs.tag }}
+          path: plugins/livekit-meet/livekit-meet-plugin-${{ needs.resolve-tag.outputs.tag }}.zip
+          retention-days: 7
+
+  release:
+    needs: [resolve-tag, container, plugin]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download plugin zip artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: livekit-meet-plugin-${{ needs.resolve-tag.outputs.tag }}
+          path: ./artifacts
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.resolve-tag.outputs.tag }}
+          name: ${{ needs.resolve-tag.outputs.tag }}
+          files: ./artifacts/livekit-meet-plugin-${{ needs.resolve-tag.outputs.tag }}.zip
+          generate_release_notes: true

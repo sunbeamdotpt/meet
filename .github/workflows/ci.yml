@@ -72,15 +72,25 @@ jobs:
         working-directory: ./plugins/livekit-meet
         run: pnpm install --frozen-lockfile
 
-      - name: Build plugin
+      - name: Build plugin bundle
         working-directory: ./plugins/livekit-meet
         run: pnpm build
+
+      - name: Build plugin zip
+        working-directory: ./plugins/livekit-meet
+        run: pnpm zip v0.0.0
+
+      - name: Verify plugin zip layout
+        working-directory: ./plugins/livekit-meet
+        run: |
+          unzip -l livekit-meet-plugin-v0.0.0.zip | grep -E '^\s+\d+\s+.*manifest\.json$'
+          unzip -l livekit-meet-plugin-v0.0.0.zip | grep -E '^\s+\d+\s+.*index\.js$'
 
       - name: Upload plugin artifact
         uses: actions/upload-artifact@v4
         with:
           name: livekit-meet-plugin
-          path: plugins/livekit-meet/dist/
+          path: plugins/livekit-meet/livekit-meet-plugin-v0.0.0.zip
           retention-days: 7
 
   build-container:
