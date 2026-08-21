@@ -8,6 +8,7 @@ A LiveKit-based video conferencing app for calendar events, forked from [livekit
 - pnpm
 - A LiveKit project (Cloud or self-hosted)
 - An OIDC provider (e.g. Zitadel, Keycloak, Okta)
+- Postgres for meeting metadata
 - S3-compatible storage if you use the recording feature
 
 ## Setup
@@ -57,21 +58,47 @@ The following API routes are available for server-side integrations (e.g. Bulwar
 
 ### Webhooks
 
-Configure your LiveKit project to send webhooks to `/api/webhooks/livekit`. The endpoint verifies signatures and logs events.
+Configure your LiveKit project to send webhooks to `/api/webhooks/livekit`. The endpoint verifies signatures, logs events, and forwards lifecycle events (`room_started`, `room_finished`, `participant_joined`, `participant_left`, `egress_started`, `egress_ended`) to Bulwark when `BULWARK_WEBHOOK_URL` is configured.
+
+### Bulwark plugin
+
+The `plugins/livekit-meet/` directory contains a Bulwark Mail plugin that adds an **"Add LiveKit Meeting"** button to calendar events.
+
+1. Build the plugin:
+
+   ```bash
+   cd plugins/livekit-meet
+   pnpm install
+   pnpm build
+   ```
+
+2. Zip `dist/index.js` + `manifest.json` and upload via Bulwark Admin → Plugins.
+
+3. Configure your reverse proxy so Bulwark routes `/api/bulwark/rooms` and `/api/webhooks/livekit` to this app.
+
+When an organizer saves a calendar event, the plugin creates the LiveKit room and sets the event's virtual location to `https://meet.sunbeam.pt/rooms/{roomName}?role=host`.
+
+### Upcoming meetings
+
+Signed-in users can visit `/meetings` to see their upcoming LiveKit meetings and join them directly.
 
 ## Environment Variables
 
-| Variable             | Description                                               |
-| -------------------- | --------------------------------------------------------- |
-| `LIVEKIT_API_KEY`    | LiveKit API key                                           |
-| `LIVEKIT_API_SECRET` | LiveKit API secret                                        |
-| `LIVEKIT_URL`        | LiveKit server URL, e.g. `wss://my-project.livekit.cloud` |
-| `OIDC_ISSUER`        | OIDC issuer URL                                           |
-| `OIDC_CLIENT_ID`     | OIDC client ID                                            |
-| `OIDC_CLIENT_SECRET` | OIDC client secret                                        |
-| `AUTH_SECRET`        | Random secret for NextAuth session cookies                |
-| `S3_KEY_ID`          | S3 access key ID for egress recordings                    |
-| `S3_KEY_SECRET`      | S3 secret access key for egress recordings                |
-| `S3_ENDPOINT`        | S3 endpoint URL (omit for AWS)                            |
-| `S3_BUCKET`          | S3 bucket for egress recordings                           |
-| `S3_REGION`          | S3 region for egress recordings                           |
+| Variable                 | Description                                                |
+| ------------------------ | ---------------------------------------------------------- |
+| `LIVEKIT_API_KEY`        | LiveKit API key                                            |
+| `LIVEKIT_API_SECRET`     | LiveKit API secret                                         |
+| `LIVEKIT_URL`            | LiveKit server URL, e.g. `wss://my-project.livekit.cloud`  |
+| `OIDC_ISSUER`            | OIDC issuer URL                                            |
+| `OIDC_CLIENT_ID`         | OIDC client ID                                             |
+| `OIDC_CLIENT_SECRET`     | OIDC client secret                                         |
+| `AUTH_SECRET`            | Random secret for NextAuth session cookies                 |
+| `S3_KEY_ID`              | S3 access key ID for egress recordings                     |
+| `S3_KEY_SECRET`          | S3 secret access key for egress recordings                 |
+| `S3_ENDPOINT`            | S3 endpoint URL (omit for AWS)                             |
+| `S3_BUCKET`              | S3 bucket for egress recordings                            |
+| `S3_REGION`              | S3 region for egress recordings                            |
+| `DATABASE_URL`           | Postgres connection string                                 |
+| `MEET_BASE_URL`          | Base URL for meeting links, e.g. `https://meet.sunbeam.pt` |
+| `BULWARK_WEBHOOK_URL`    | Bulwark endpoint for LiveKit lifecycle events (optional)   |
+| `BULWARK_WEBHOOK_SECRET` | Shared secret for signing Bulwark webhooks (optional)      |
