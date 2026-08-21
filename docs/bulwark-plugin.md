@@ -43,17 +43,34 @@ LiveKit lifecycle webhooks are forwarded to Bulwark when `BULWARK_WEBHOOK_URL` a
 
 Payloads are signed with HMAC-SHA256 using `BULWARK_WEBHOOK_SECRET`.
 
-## Installation
+## Packaging
 
-The plugin is built as a separate artifact in CI. For local development:
+Bulwark plugins ship as a ZIP bundle containing `manifest.json` and `index.js` at the root. The `build:zip` script produces this bundle:
 
 ```sh
 cd plugins/livekit-meet
 pnpm install --frozen-lockfile
-pnpm build
+pnpm build:zip v2026.08.1
 ```
 
-The built artifact is uploaded by the `build-plugin` CI job.
+The output is `livekit-meet-plugin-v2026.08.1.zip` with:
+
+```
+manifest.json
+index.js
+```
+
+## Installation
+
+1. Download the plugin ZIP from the GitHub release matching the app version.
+2. In Bulwark Mail, go to **Admin → Plugins** and upload the ZIP.
+3. Enable the plugin.
+
+The CI `build-plugin` job verifies the ZIP layout on every push and pull request, and the release workflow attaches the plugin ZIP to each `v*` GitHub release.
+
+## Versioning
+
+The plugin version tracks the app version using the same [Calendar Versioning](https://calver.org) scheme (`YYYY.0M.PATCH`). The release workflow injects the release tag version into `manifest.json` before zipping, so the uploaded plugin always matches the release.
 
 ## Statelessness
 

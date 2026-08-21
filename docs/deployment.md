@@ -54,6 +54,10 @@ To cut a release:
 
 The tag push triggers the release workflow.
 
+## Bulwark plugin release artifact
+
+The release workflow also builds the Bulwark plugin in `plugins/livekit-meet/`, injects the release version into `manifest.json`, and uploads `livekit-meet-plugin-{tag}.zip` as a GitHub release asset. Install this ZIP through **Bulwark Admin → Plugins**.
+
 ## Deploying to meet.sunbeam.pt
 
 Set the runtime environment for the deployed container:
