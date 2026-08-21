@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    environment:
+      LIVEKIT_KEYS: 'key: secret'
+    ports:
+      - '7880:7880'
+
+  app:
+    image: livekit-meet:ci
+    depends_on:
+      - livekit
+    environment:
+      LIVEKIT_URL: 'ws://livekit:7880'
+      LIVEKIT_API_KEY: 'key'
+      LIVEKIT_API_SECRET: 'secret'
+      ALLOW_TEST_AUTH: 'true'
+      E2EE_SECRET: 'ci-e2ee-secret-change-me'
+      AUTH_SECRET: 'ci-auth-secret-change-me'
+    ports:
+      - '3000:3000'
