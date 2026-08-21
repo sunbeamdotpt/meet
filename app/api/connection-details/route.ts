@@ -1,6 +1,7 @@
 import { randomString } from '@/lib/client-utils';
 import { getLiveKitURL } from '@/lib/getLiveKitURL';
 import { ConnectionDetails } from '@/lib/types';
+import { auth } from '@/auth';
 import { AccessToken, AccessTokenOptions, VideoGrant } from 'livekit-server-sdk';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -12,16 +13,18 @@ const COOKIE_KEY = 'random-participant-postfix';
 
 export async function GET(request: NextRequest) {
   try {
-    // Parse query parameters
+    const session = await auth();
+    if (!session?.user) {
+      return new NextResponse('Unauthorized', { status: 401 });
+    }
+
     const roomName = request.nextUrl.searchParams.get('roomName');
-    const participantName = request.nextUrl.searchParams.get('participantName');
-    const metadata = request.nextUrl.searchParams.get('metadata') ?? '';
     const region = request.nextUrl.searchParams.get('region');
+
     if (!LIVEKIT_URL) {
       throw new Error('LIVEKIT_URL is not defined');
     }
     const livekitServerUrl = region ? getLiveKitURL(LIVEKIT_URL, region) : LIVEKIT_URL;
-    let randomParticipantPostfix = request.cookies.get(COOKIE_KEY)?.value;
     if (livekitServerUrl === undefined) {
       throw new Error('Invalid region');
     }
@@ -29,24 +32,24 @@ export async function GET(request: NextRequest) {
     if (typeof roomName !== 'string') {
       return new NextResponse('Missing required query parameter: roomName', { status: 400 });
     }
-    if (participantName === null) {
-      return new NextResponse('Missing required query parameter: participantName', { status: 400 });
-    }
 
-    // Generate participant token
+    const participantName = session.user.name ?? session.user.email ?? 'Guest';
+    const stableIdentity = session.user.email ?? session.user.id ?? randomString(8);
+
+    let randomParticipantPostfix = request.cookies.get(COOKIE_KEY)?.value;
     if (!randomParticipantPostfix) {
       randomParticipantPostfix = randomString(4);
     }
+
     const participantToken = await createParticipantToken(
       {
-        identity: `${participantName}__${randomParticipantPostfix}`,
+        identity: `${stableIdentity}__${randomParticipantPostfix}`,
         name: participantName,
-        metadata,
+        metadata: JSON.stringify({ email: session.user.email }),
       },
       roomName,
     );
 
-    // Return connection details
     const data: ConnectionDetails = {
       serverUrl: livekitServerUrl,
       roomName: roomName,
@@ -81,9 +84,9 @@ function createParticipantToken(userInfo: AccessTokenOptions, roomName: string) 
 }
 
 function getCookieExpirationTime(): string {
-  var now = new Date();
-  var time = now.getTime();
-  var expireTime = time + 60 * 120 * 1000;
+  const now = new Date();
+  const time = now.getTime();
+  const expireTime = time + 60 * 120 * 1000;
   now.setTime(expireTime);
   return now.toUTCString();
 }

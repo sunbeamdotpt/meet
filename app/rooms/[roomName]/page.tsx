@@ -1,6 +1,8 @@
 import * as React from 'react';
 import { PageClientImpl } from './PageClientImpl';
 import { isVideoCodec } from '@/lib/types';
+import { auth } from '@/auth';
+import { redirect } from 'next/navigation';
 
 export default async function Page({
   params,
@@ -8,13 +10,17 @@ export default async function Page({
 }: {
   params: Promise<{ roomName: string }>;
   searchParams: Promise<{
-    // FIXME: We should not allow values for regions if in playground mode.
     region?: string;
     hq?: string;
     codec?: string;
     singlePC?: string;
   }>;
 }) {
+  const session = await auth();
+  if (!session?.user) {
+    redirect('/api/auth/signin');
+  }
+
   const _params = await params;
   const _searchParams = await searchParams;
   const codec =
@@ -24,6 +30,8 @@ export default async function Page({
   const hq = _searchParams.hq === 'true' ? true : false;
   const singlePC = _searchParams.singlePC !== 'false';
 
+  const userName = session.user.name ?? session.user.email ?? 'Guest';
+
   return (
     <PageClientImpl
       roomName={_params.roomName}
@@ -31,6 +39,7 @@ export default async function Page({
       hq={hq}
       codec={codec}
       singlePeerConnection={singlePC}
+      userName={userName}
     />
   );
 }
