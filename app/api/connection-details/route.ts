@@ -7,7 +7,10 @@ import { deriveE2EEPassphrase } from '@/lib/e2ee';
 import { isAdmitted } from '@/lib/waitingRoom';
 import { NextRequest, NextResponse } from 'next/server';
 
-const LIVEKIT_URL = process.env.LIVEKIT_URL;
+// URL returned to the browser must be resolvable from the client. In containerized
+// CI the server SDK uses the internal Docker hostname (LIVEKIT_URL), while the
+// browser needs a host-routable address (NEXT_PUBLIC_LIVEKIT_URL).
+const BROWSER_LIVEKIT_URL = process.env.NEXT_PUBLIC_LIVEKIT_URL ?? process.env.LIVEKIT_URL;
 
 const COOKIE_KEY = 'random-participant-postfix';
 
@@ -23,10 +26,12 @@ export async function GET(request: NextRequest) {
     const roleParam = request.nextUrl.searchParams.get('role');
     const role: MeetingRole = roleParam === 'host' ? 'host' : 'guest';
 
-    if (!LIVEKIT_URL) {
-      throw new Error('LIVEKIT_URL is not defined');
+    if (!BROWSER_LIVEKIT_URL) {
+      throw new Error('LIVEKIT_URL or NEXT_PUBLIC_LIVEKIT_URL must be defined');
     }
-    const livekitServerUrl = region ? getLiveKitURL(LIVEKIT_URL, region) : LIVEKIT_URL;
+    const livekitServerUrl = region
+      ? getLiveKitURL(BROWSER_LIVEKIT_URL, region)
+      : BROWSER_LIVEKIT_URL;
     if (livekitServerUrl === undefined) {
       throw new Error('Invalid region');
     }
