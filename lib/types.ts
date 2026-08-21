@@ -26,3 +26,11 @@ export type ConnectionDetails = {
   participantName: string;
   participantToken: string;
 };
+
+export type MeetingRole = 'host' | 'guest';
+
+export interface WaitingParticipant {
+  identity: string;
+  name: string;
+  joinedAt: number;
+}
