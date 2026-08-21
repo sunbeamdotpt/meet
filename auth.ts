@@ -1,5 +1,6 @@
 import NextAuth from 'next-auth';
 import type { OIDCConfig } from 'next-auth/providers';
+import Credentials from 'next-auth/providers/credentials';
 
 interface OIDCProfile {
   sub: string;
@@ -30,8 +31,33 @@ const oidcProvider: OIDCConfig<OIDCProfile> = {
   },
 };
 
+const testProvider =
+  process.env.ALLOW_TEST_AUTH === 'true'
+    ? Credentials({
+        id: 'test',
+        name: 'Test Account',
+        credentials: {
+          name: { label: 'Name', type: 'text' },
+          email: { label: 'Email', type: 'email' },
+        },
+        authorize(credentials) {
+          const name = typeof credentials?.name === 'string' ? credentials.name : 'Test User';
+          const email = typeof credentials?.email === 'string' ? credentials.email : 'test@example.com';
+          return { id: email, name, email };
+        },
+      })
+    : null;
+
+const providers: Array<ReturnType<typeof Credentials> | typeof oidcProvider> = [];
+if (process.env.OIDC_ISSUER) {
+  providers.push(oidcProvider);
+}
+if (testProvider) {
+  providers.push(testProvider);
+}
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  providers: [oidcProvider],
+  providers: providers.length > 0 ? providers : ([{ id: 'none', name: 'None', type: 'credentials', authorize: () => null }] as any),
   callbacks: {
     async session({ session, token }) {
       if (token.sub) {
