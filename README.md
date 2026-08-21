@@ -25,6 +25,7 @@ Detailed documentation is available in `docs/` and served by the Sunbeam docs po
 - [OIDC Setup](./docs/oidc.md)
 - [Bulwark Plugin](./docs/bulwark-plugin.md)
 - [Features](./docs/features.md)
+- [License and Attribution](./docs/license.md)
 
 ## High-level overview
 
@@ -34,4 +35,8 @@ The Bulwark Mail plugin in `plugins/livekit-meet/` adds an **"Add LiveKit Meetin
 
 ## License
 
-AGPL-3.0-or-later
+Copyright (C) 2026 Sunbeam, Lda.
+
+This project is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE).
+
+This project is a fork of [livekit-examples/meet](https://github.com/livekit-examples/meet), which was originally licensed under the [Apache License 2.0](NOTICE). The original Apache 2.0 license text and attribution are preserved in the [NOTICE](NOTICE) file.
