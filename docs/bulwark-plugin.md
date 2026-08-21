@@ -8,7 +8,7 @@ nav_order: 7
 
 # Bulwark Plugin
 
-The Bulwark plugin lives in `plugins/livekit-meet/` and adds an **"Add LiveKit Meeting"** button to calendar event editors in Bulwark Mail.
+The Bulwark plugin lives in `plugins/livekit-meet/` and is authored by **Sunbeam Studios**. It adds an **"Add LiveKit Meeting"** button to calendar event editors in Bulwark Mail.
 
 ## What it does
 
@@ -27,6 +27,16 @@ The event organizer is always granted host permissions.
 The plugin must present a valid OIDC access token in the `Authorization: Bearer <token>` header. The token is verified against the configured OIDC issuer using standard OIDC discovery.
 
 See [OIDC Setup](./oidc.md) for details.
+
+## Configuration
+
+The plugin exposes three per-user settings in Bulwark's plugin preferences:
+
+| Setting | Type | Default | Description |
+| --- | --- | --- | --- |
+| `buttonLabel` | string | `Add LiveKit Meeting` | Label shown on the calendar event action button. |
+| `autoSetLocation` | boolean | `true` | When enabled, the generated meeting link is written directly into the event's meeting link field. |
+| `apiPath` | string | `/api/bulwark/rooms` | Same-origin path the plugin POSTs to. This path must be proxied to the LiveKit Meet deployment. |
 
 ## Webhooks
 
