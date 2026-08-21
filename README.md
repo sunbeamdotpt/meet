@@ -2,103 +2,36 @@
 
 A LiveKit-based video conferencing app for calendar events, forked from [livekit-examples/meet](https://github.com/livekit-examples/meet).
 
-## Requirements
+## Quick start
 
-- Node.js 18+
-- pnpm
-- A LiveKit project (Cloud or self-hosted)
-- An OIDC provider (e.g. Zitadel, Keycloak, Okta)
-- Postgres for meeting metadata
-- S3-compatible storage if you use the recording feature
+```bash
+pnpm install --frozen-lockfile
+cp .env.example .env
+# Edit .env with your LiveKit, OIDC, and Postgres credentials.
+pnpm dev
+```
 
-## Setup
+Open [http://localhost:3000](http://localhost:3000).
 
-1. Install dependencies:
+## Documentation
 
-   ```bash
-   pnpm install
-   ```
+Detailed documentation is available in `docs/` and served by the Sunbeam docs portal:
 
-2. Copy `.env.example` to `.env.local` and fill in the values:
+- [Getting Started](./docs/getting-started.md)
+- [Configuration](./docs/configuration.md)
+- [Running Locally](./docs/running-locally.md)
+- [Testing](./docs/testing.md)
+- [Deployment and Releases](./docs/deployment.md)
+- [OIDC Setup](./docs/oidc.md)
+- [Bulwark Plugin](./docs/bulwark-plugin.md)
+- [Features](./docs/features.md)
 
-   ```bash
-   cp .env.example .env.local
-   ```
+## High-level overview
 
-3. Start the development server:
-   ```bash
-   pnpm dev
-   ```
+Users authenticate via OIDC. Calendar events link directly to `/rooms/{roomName}`; authenticated users join from that URL. Organizers use `?role=host`, guests use `?role=guest` and wait in a waiting room until admitted.
 
-## Usage
+The Bulwark Mail plugin in `plugins/livekit-meet/` adds an **"Add LiveKit Meeting"** button to calendar events and creates rooms via `POST /api/bulwark/rooms`.
 
-Users authenticate via OIDC. Calendar events link directly to `/rooms/{roomName}`; authenticated users can join the room from that URL.
+## License
 
-### Roles and waiting room
-
-Append `?role=host` to the room URL for organizers. Guests join with `?role=guest` (or omit the parameter). Guests receive restricted tokens and see a waiting screen until a host admits them from the in-meeting host panel.
-
-### Recording
-
-Hosts can start and stop room-composite recordings from the settings menu. Recordings are written to the configured S3 bucket via LiveKit Egress.
-
-### Room management API
-
-The following API routes are available for server-side integrations (e.g. Bulwark creating rooms for calendar events):
-
-- `GET /api/rooms` — list active rooms
-- `POST /api/rooms` — create a room
-- `GET /api/rooms/{roomName}` — get room details
-- `DELETE /api/rooms/{roomName}` — delete a room
-- `GET /api/rooms/{roomName}/participants` — list participants
-- `DELETE /api/rooms/{roomName}/participants/{identity}` — remove a participant
-- `POST /api/rooms/{roomName}/participants/{identity}/permissions` — update/admit a participant
-- `POST /api/rooms/{roomName}/record/start` — start recording
-- `POST /api/rooms/{roomName}/record/stop` — stop recording
-
-### Webhooks
-
-Configure your LiveKit project to send webhooks to `/api/webhooks/livekit`. The endpoint verifies signatures, logs events, and forwards lifecycle events (`room_started`, `room_finished`, `participant_joined`, `participant_left`, `egress_started`, `egress_ended`) to Bulwark when `BULWARK_WEBHOOK_URL` is configured.
-
-### Bulwark plugin
-
-The `plugins/livekit-meet/` directory contains a Bulwark Mail plugin that adds an **"Add LiveKit Meeting"** button to calendar events.
-
-1. Build the plugin:
-
-   ```bash
-   cd plugins/livekit-meet
-   pnpm install
-   pnpm build
-   ```
-
-2. Zip `dist/index.js` + `manifest.json` and upload via Bulwark Admin → Plugins.
-
-3. Configure your reverse proxy so Bulwark routes `/api/bulwark/rooms` and `/api/webhooks/livekit` to this app.
-
-When an organizer saves a calendar event, the plugin creates the LiveKit room and sets the event's virtual location to `https://meet.sunbeam.pt/rooms/{roomName}?role=host`.
-
-### Upcoming meetings
-
-Signed-in users can visit `/meetings` to see their upcoming LiveKit meetings and join them directly.
-
-## Environment Variables
-
-| Variable                 | Description                                                |
-| ------------------------ | ---------------------------------------------------------- |
-| `LIVEKIT_API_KEY`        | LiveKit API key                                            |
-| `LIVEKIT_API_SECRET`     | LiveKit API secret                                         |
-| `LIVEKIT_URL`            | LiveKit server URL, e.g. `wss://my-project.livekit.cloud`  |
-| `OIDC_ISSUER`            | OIDC issuer URL                                            |
-| `OIDC_CLIENT_ID`         | OIDC client ID                                             |
-| `OIDC_CLIENT_SECRET`     | OIDC client secret                                         |
-| `AUTH_SECRET`            | Random secret for NextAuth session cookies                 |
-| `S3_KEY_ID`              | S3 access key ID for egress recordings                     |
-| `S3_KEY_SECRET`          | S3 secret access key for egress recordings                 |
-| `S3_ENDPOINT`            | S3 endpoint URL (omit for AWS)                             |
-| `S3_BUCKET`              | S3 bucket for egress recordings                            |
-| `S3_REGION`              | S3 region for egress recordings                            |
-| `DATABASE_URL`           | Postgres connection string                                 |
-| `MEET_BASE_URL`          | Base URL for meeting links, e.g. `https://meet.sunbeam.pt` |
-| `BULWARK_WEBHOOK_URL`    | Bulwark endpoint for LiveKit lifecycle events (optional)   |
-| `BULWARK_WEBHOOK_SECRET` | Shared secret for signing Bulwark webhooks (optional)      |
+AGPL-3.0-or-later
