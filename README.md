@@ -1,3 +1,7 @@
+---
+title: Video Calls
+---
+
 # Video Calls
 
 A LiveKit-based video conferencing app for calendar events, forked from [livekit-examples/meet](https://github.com/livekit-examples/meet).
